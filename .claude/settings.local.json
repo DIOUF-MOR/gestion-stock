@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx expo:*)",
+      "Bash(npm install:*)",
+      "Bash(dir C:\\\\Users\\\\beugu\\\\Documents\\\\MES PROJETS\\\\StockManager\\\\assets:*)",
+      "Bash(npx create-expo-app:*)",
+      "Read(//c/Users/beugu/Documents/MES PROJETS/tayeur-admin/**)",
+      "Bash(node:*)"
+    ]
+  }
+}
