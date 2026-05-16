@@ -31,6 +31,7 @@ module.exports = {
         "USE_EXACT_ALARM",
         "VIBRATE",
       ],
+      googleServicesFile: process.env.GOOGLE_SERVICES_JSON || "./google-services.json",
     },
     web: {
       favicon: "./assets/favicon.png",
