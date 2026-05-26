@@ -14,11 +14,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../../theme/colors';
 import { useStore } from '../../../context/StoreContext';
 import { addEmployee, updateEmployee } from '../../../services/employeeService';
+import { registerEmployee } from '../../../services/authService';
 import Input from '../../../components/common/Input';
 import Button from '../../../components/common/Button';
 import Header from '../../../components/common/Header';
 
 const ROLES = ['Gérant', 'Vendeur', 'Caissier', 'Magasinier', 'Livreur', 'Comptable', 'Agent de sécurité', 'Nettoyeur'];
+
+// Roles that can have app access + their employeeRole key
+const APP_ROLES: { label: string; key: string; icon: string }[] = [
+  { label: 'Gérant',      key: 'gérant',     icon: 'briefcase-outline' },
+  { label: 'Vendeur',     key: 'vendeur',    icon: 'cart-outline' },
+  { label: 'Caissier',    key: 'caissier',   icon: 'cash-outline' },
+  { label: 'Magasinier',  key: 'magasinier', icon: 'cube-outline' },
+  { label: 'Comptable',   key: 'comptable',  icon: 'bar-chart-outline' },
+];
 
 const AddEmployeeScreen = ({ navigation, route }) => {
   const { storeId } = useStore();
@@ -37,6 +47,13 @@ const AddEmployeeScreen = ({ navigation, route }) => {
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+
+  // App access
+  const [enableAppAccess, setEnableAppAccess] = useState(false);
+  const [appRole, setAppRole] = useState('');
+  const [appPassword, setAppPassword] = useState('');
+  const [appPasswordConfirm, setAppPasswordConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (editEmployee) {
@@ -74,6 +91,14 @@ const AddEmployeeScreen = ({ navigation, route }) => {
 
   const handleSubmit = async () => {
     if (!validate()) return;
+
+    if (!isEditing && enableAppAccess) {
+      if (!appRole) return Alert.alert('Erreur', 'Sélectionnez le rôle application.');
+      if (!form.phone.trim()) return Alert.alert('Erreur', 'Le numéro de téléphone est requis pour l\'accès application.');
+      if (appPassword.length < 6) return Alert.alert('Erreur', 'Le mot de passe doit contenir au moins 6 caractères.');
+      if (appPassword !== appPasswordConfirm) return Alert.alert('Erreur', 'Les mots de passe ne correspondent pas.');
+    }
+
     setLoading(true);
     try {
       let result;
@@ -83,11 +108,35 @@ const AddEmployeeScreen = ({ navigation, route }) => {
         result = await addEmployee(storeId, form);
       }
 
-      if (result.success) {
-        navigation.goBack();
-      } else {
+      if (!result.success) {
         Alert.alert('Erreur', result.error);
+        return;
       }
+
+      // Create app account if requested (new employee only)
+      if (!isEditing && enableAppAccess) {
+        const authResult = await registerEmployee({
+          name: form.name.trim(),
+          phone: form.phone.trim(),
+          password: appPassword,
+          storeId,
+          employeeRole: appRole,
+        });
+        if (!authResult.success) {
+          Alert.alert(
+            'Employé créé',
+            `L'employé a été ajouté mais la création du compte application a échoué : ${authResult.error}`,
+            [{ text: 'OK', onPress: () => navigation.goBack() }]
+          );
+          return;
+        }
+        // Store the auth UID on the HR record so vendor can reset password later
+        if (result.id) {
+          await updateEmployee(storeId, result.id, { userId: authResult.employeeId });
+        }
+      }
+
+      navigation.goBack();
     } catch (error) {
       Alert.alert('Erreur', 'Une erreur inattendue est survenue.');
     } finally {
@@ -99,7 +148,10 @@ const AddEmployeeScreen = ({ navigation, route }) => {
     <SafeAreaView style={styles.safeArea}>
       <Header
         title={isEditing ? 'Modifier l\'employé' : 'Nouvel employé'}
+        subtitle={isEditing ? 'Mettre à jour le profil' : 'Ajouter à l\'équipe'}
         onBack={() => navigation.goBack()}
+        accentColor={colors.secondary}
+        showShadow
       />
 
       <KeyboardAvoidingView
@@ -212,6 +264,112 @@ const AddEmployeeScreen = ({ navigation, route }) => {
             />
           </View>
 
+          {/* App access section — new employees only */}
+          {!isEditing && (
+            <View style={styles.section}>
+              {/* Toggle button */}
+              <TouchableOpacity
+                style={[styles.accessToggle, enableAppAccess && styles.accessToggleActive]}
+                onPress={() => setEnableAppAccess(!enableAppAccess)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.checkbox, enableAppAccess && styles.checkboxActive]}>
+                  {enableAppAccess && (
+                    <Ionicons name="checkmark" size={16} color={colors.textInverse} />
+                  )}
+                </View>
+                <View style={styles.accessToggleInfo}>
+                  <Text style={[styles.accessToggleTitle, enableAppAccess && styles.accessToggleTitleActive]}>
+                    Accès à l'application
+                  </Text>
+                  <Text style={styles.accessToggleSub}>
+                    {enableAppAccess
+                      ? 'Cet employé pourra se connecter avec son téléphone'
+                      : 'Appuyer pour activer la connexion'}
+                  </Text>
+                </View>
+                <Ionicons
+                  name={enableAppAccess ? 'phone-portrait' : 'phone-portrait-outline'}
+                  size={22}
+                  color={enableAppAccess ? colors.primary : colors.textDisabled}
+                />
+              </TouchableOpacity>
+
+              {enableAppAccess && (
+                <>
+                  <Text style={styles.fieldLabel}>Rôle dans l'application :</Text>
+                  <View style={styles.appRoleGrid}>
+                    {APP_ROLES.map(({ label, key, icon }) => (
+                      <TouchableOpacity
+                        key={key}
+                        style={[styles.appRoleCard, appRole === key && styles.appRoleCardActive]}
+                        onPress={() => setAppRole(key)}
+                      >
+                        <Ionicons
+                          name={icon as any}
+                          size={20}
+                          color={appRole === key ? colors.textInverse : colors.textSecondary}
+                        />
+                        <Text style={[styles.appRoleText, appRole === key && styles.appRoleTextActive]}>
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {appRole ? (
+                    <View style={styles.rolePermissionsBox}>
+                      <Ionicons name="information-circle-outline" size={14} color={colors.info} />
+                      <Text style={styles.rolePermissionsText}>
+                        {appRole === 'gérant' && 'Accès : ventes, stock, transactions, finances'}
+                        {appRole === 'vendeur' && 'Accès : faire des ventes, consulter le stock'}
+                        {appRole === 'caissier' && 'Accès : faire des ventes, consulter les transactions'}
+                        {appRole === 'magasinier' && 'Accès : gérer le stock et les produits'}
+                        {appRole === 'comptable' && 'Accès : transactions et finances uniquement'}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  <Input
+                    label="Mot de passe *"
+                    value={appPassword}
+                    onChangeText={setAppPassword}
+                    placeholder="Minimum 6 caractères"
+                    secureTextEntry={!showPassword}
+                    leftIcon={<Ionicons name="lock-closed-outline" size={20} color={colors.textSecondary} />}
+                    rightIcon={
+                      <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                        <Ionicons
+                          name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                          size={20}
+                          color={colors.textSecondary}
+                        />
+                      </TouchableOpacity>
+                    }
+                  />
+
+                  <Input
+                    label="Confirmer le mot de passe *"
+                    value={appPasswordConfirm}
+                    onChangeText={setAppPasswordConfirm}
+                    placeholder="Répéter le mot de passe"
+                    secureTextEntry={!showPassword}
+                    leftIcon={<Ionicons name="lock-closed-outline" size={20} color={colors.textSecondary} />}
+                    rightIcon={
+                      appPasswordConfirm.length > 0 ? (
+                        <Ionicons
+                          name={appPassword === appPasswordConfirm ? 'checkmark-circle' : 'close-circle'}
+                          size={20}
+                          color={appPassword === appPasswordConfirm ? colors.success : colors.error}
+                        />
+                      ) : undefined
+                    }
+                  />
+                </>
+              )}
+            </View>
+          )}
+
           <Button
             title={isEditing ? 'Enregistrer les modifications' : 'Ajouter l\'employé'}
             onPress={handleSubmit}
@@ -294,6 +452,88 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 24,
+  },
+  // Access toggle button
+  accessToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: colors.background,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: colors.border,
+    padding: 14,
+    marginBottom: 16,
+  },
+  accessToggleActive: {
+    borderColor: colors.primary,
+    backgroundColor: `${colors.primary}08`,
+  },
+  checkbox: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
+  checkboxActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  accessToggleInfo: { flex: 1 },
+  accessToggleTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  accessToggleTitleActive: {
+    color: colors.primary,
+  },
+  accessToggleSub: {
+    fontSize: 12,
+    color: colors.textDisabled,
+    marginTop: 2,
+  },
+  appRoleGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  appRoleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  appRoleCardActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  appRoleText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
+  appRoleTextActive: { color: colors.textInverse },
+  rolePermissionsBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    backgroundColor: `${colors.info}12`,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+  },
+  rolePermissionsText: {
+    flex: 1,
+    fontSize: 12,
+    color: colors.textPrimary,
+    lineHeight: 18,
   },
 });
 

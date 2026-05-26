@@ -79,6 +79,15 @@ const AddProductScreen = ({ navigation, route }) => {
 
   const handleSubmit = async () => {
     if (!validate()) return;
+
+    if (!storeId) {
+      Alert.alert(
+        'Boutique introuvable',
+        'Votre profil de boutique n\'est pas encore chargé. Déconnectez-vous et reconnectez-vous.'
+      );
+      return;
+    }
+
     setLoading(true);
     try {
       const productData = {
@@ -102,9 +111,11 @@ const AddProductScreen = ({ navigation, route }) => {
       if (result.success) {
         navigation.goBack();
       } else {
-        Alert.alert('Erreur', result.error);
+        console.error('addProduct failed:', result.error);
+        Alert.alert('Erreur', result.error || 'Impossible d\'enregistrer le produit.');
       }
     } catch (error) {
+      console.error('handleSubmit error:', error);
       Alert.alert('Erreur', 'Une erreur inattendue est survenue.');
     } finally {
       setLoading(false);
@@ -115,7 +126,10 @@ const AddProductScreen = ({ navigation, route }) => {
     <SafeAreaView style={styles.safeArea}>
       <Header
         title={isEditing ? 'Modifier le produit' : 'Nouveau produit'}
+        subtitle={isEditing ? 'Mettre à jour les informations' : 'Ajouter au catalogue'}
         onBack={() => navigation.goBack()}
+        accentColor={colors.primary}
+        showShadow
       />
 
       <KeyboardAvoidingView

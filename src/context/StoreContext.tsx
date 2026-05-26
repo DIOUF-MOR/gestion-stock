@@ -1,12 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import {
-  collection,
-  doc,
-  onSnapshot,
-  query,
-  orderBy,
-  where,
-} from 'firebase/firestore';
+import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase.config';
 import { useAuth } from './AuthContext';
 
@@ -48,6 +41,10 @@ export const StoreProvider = ({ children }) => {
   useEffect(() => {
     if (!storeId) return;
 
+    // Livreurs and clients only need the store document — not subcollections (permission denied)
+    const isLivreurRole = userProfile?.role === 'livreur';
+    const isClientRole = userProfile?.role === 'client';
+
     const unsubscribers = [];
 
     // Listen to store document
@@ -64,70 +61,73 @@ export const StoreProvider = ({ children }) => {
       })
     );
 
-    // Listen to products
-    const productsRef = collection(db, 'stores', storeId, 'products');
-    const productsQuery = query(productsRef, orderBy('name', 'asc'));
+    // Skip subcollections for livreurs and clients (no permission + not needed)
+    if (isLivreurRole || isClientRole) {
+      return () => unsubscribers.forEach(unsub => unsub());
+    }
+
+    // Listen to products — sort by name in JS (no index needed)
     unsubscribers.push(
-      onSnapshot(productsQuery, (snapshot) => {
-        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      onSnapshot(collection(db, 'stores', storeId, 'products'), (snapshot) => {
+        const items = snapshot.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         setProducts(items);
-      }, (error) => {
-        console.error('Error listening to products:', error);
-      })
+      }, (error) => console.error('products listener:', error))
     );
 
-    // Listen to clients
-    const clientsRef = collection(db, 'stores', storeId, 'clients');
-    const clientsQuery = query(clientsRef, orderBy('name', 'asc'));
+    // Listen to clients — sort by name in JS
     unsubscribers.push(
-      onSnapshot(clientsQuery, (snapshot) => {
-        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      onSnapshot(collection(db, 'stores', storeId, 'clients'), (snapshot) => {
+        const items = snapshot.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         setClients(items);
-      }, (error) => {
-        console.error('Error listening to clients:', error);
-      })
+      }, (error) => console.error('clients listener:', error))
     );
 
-    // Listen to employees
-    const employeesRef = collection(db, 'stores', storeId, 'employees');
-    const employeesQuery = query(employeesRef, orderBy('name', 'asc'));
+    // Listen to employees — sort by name in JS
     unsubscribers.push(
-      onSnapshot(employeesQuery, (snapshot) => {
-        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      onSnapshot(collection(db, 'stores', storeId, 'employees'), (snapshot) => {
+        const items = snapshot.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         setEmployees(items);
-      }, (error) => {
-        console.error('Error listening to employees:', error);
-      })
+      }, (error) => console.error('employees listener:', error))
     );
 
-    // Listen to transactions (last 90 days)
-    const transactionsRef = collection(db, 'stores', storeId, 'transactions');
-    const transactionsQuery = query(transactionsRef, orderBy('date', 'desc'));
+    // Listen to transactions — sort by date desc in JS
     unsubscribers.push(
-      onSnapshot(transactionsQuery, (snapshot) => {
-        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      onSnapshot(collection(db, 'stores', storeId, 'transactions'), (snapshot) => {
+        const items = snapshot.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => {
+            const da = a.date?.toDate ? a.date.toDate() : new Date(a.date || 0);
+            const db_ = b.date?.toDate ? b.date.toDate() : new Date(b.date || 0);
+            return db_ - da;
+          });
         setTransactions(items);
-      }, (error) => {
-        console.error('Error listening to transactions:', error);
-      })
+      }, (error) => console.error('transactions listener:', error))
     );
 
-    // Listen to debts
-    const debtsRef = collection(db, 'stores', storeId, 'debts');
-    const debtsQuery = query(debtsRef, orderBy('createdAt', 'desc'));
+    // Listen to debts — sort by createdAt desc in JS
     unsubscribers.push(
-      onSnapshot(debtsQuery, (snapshot) => {
-        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      onSnapshot(collection(db, 'stores', storeId, 'debts'), (snapshot) => {
+        const items = snapshot.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => {
+            const da = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+            const db_ = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+            return db_ - da;
+          });
         setDebts(items);
-      }, (error) => {
-        console.error('Error listening to debts:', error);
-      })
+      }, (error) => console.error('debts listener:', error))
     );
 
     return () => {
       unsubscribers.forEach(unsub => unsub());
     };
-  }, [storeId]);
+  }, [storeId, userProfile?.role]);
 
   // Computed stats
   const getLowStockProducts = () => {

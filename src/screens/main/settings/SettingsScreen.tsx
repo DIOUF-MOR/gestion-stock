@@ -6,23 +6,90 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import moment from 'moment';
+import 'moment/locale/fr';
 import { colors } from '../../../theme/colors';
 import { useAuth } from '../../../context/AuthContext';
 import { useStore } from '../../../context/StoreContext';
-import { logoutUser, updateUserProfile } from '../../../services/authService';
-import Card from '../../../components/common/Card';
-import moment from 'moment';
-import 'moment/locale/fr';
+import { logoutUser } from '../../../services/authService';
+import Header from '../../../components/common/Header';
 
 moment.locale('fr');
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const getInitials = (name: string) =>
+  (name || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+
+const PLAN_META: Record<string, { label: string; color: string; icon: string }> = {
+  free:    { label: 'Gratuit',  color: colors.planFree,    icon: 'gift-outline' },
+  basic:   { label: 'Basique',  color: colors.planBasic,   icon: 'star-outline' },
+  premium: { label: 'Premium',  color: colors.planPremium, icon: 'diamond-outline' },
+};
+
+const ROLE_META: Record<string, { label: string; color: string }> = {
+  gerant:   { label: 'Gérant',   color: colors.primary },
+  livreur:  { label: 'Livreur',  color: colors.accent },
+  employe:  { label: 'Employé',  color: colors.secondary },
+  client:   { label: 'Client',   color: colors.success },
+};
+
+// ─── SettingRow ───────────────────────────────────────────────────────────────
+
+const SettingRow = ({
+  icon,
+  iconColor = colors.textSecondary,
+  label,
+  subtitle,
+  subtitleColor,
+  onPress,
+  showArrow = true,
+  danger = false,
+}: {
+  icon: string;
+  iconColor?: string;
+  label: string;
+  subtitle?: string;
+  subtitleColor?: string;
+  onPress: () => void;
+  showArrow?: boolean;
+  danger?: boolean;
+}) => (
+  <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
+    <View style={[styles.rowIcon, { backgroundColor: danger ? `${colors.error}12` : `${iconColor}12` }]}>
+      <Ionicons name={icon as any} size={19} color={danger ? colors.error : iconColor} />
+    </View>
+    <View style={styles.rowInfo}>
+      <Text style={[styles.rowLabel, danger && { color: colors.error }]}>{label}</Text>
+      {subtitle ? (
+        <Text style={[styles.rowSub, subtitleColor && { color: subtitleColor }]}>{subtitle}</Text>
+      ) : null}
+    </View>
+    {showArrow && (
+      <Ionicons name="chevron-forward" size={16} color={colors.textDisabled} />
+    )}
+  </TouchableOpacity>
+);
+
+// ─── Section ──────────────────────────────────────────────────────────────────
+
+const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <View style={styles.section}>
+    <Text style={styles.sectionTitle}>{title}</Text>
+    <View style={styles.sectionCard}>{children}</View>
+  </View>
+);
+
+const Divider = () => <View style={styles.divider} />;
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
 const SettingsScreen = ({ navigation }) => {
   const { user, userProfile, subscription, getSubscriptionDaysLeft } = useAuth();
-  const { store, storeId } = useStore();
+  const { store, clients, products } = useStore();
   const [loggingOut, setLoggingOut] = useState(false);
 
   const handleLogout = () => {
@@ -44,288 +111,327 @@ const SettingsScreen = ({ navigation }) => {
     );
   };
 
-  const getInitials = (name) => {
-    return name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
-  };
+  const plan     = PLAN_META[subscription?.plan] ?? { label: 'Inconnu', color: colors.textSecondary, icon: 'help-circle-outline' };
+  const role     = ROLE_META[userProfile?.role]  ?? { label: userProfile?.role ?? 'Utilisateur', color: colors.textSecondary };
+  const daysLeft = getSubscriptionDaysLeft();
 
-  const getPlanName = () => {
-    const plans = { free: 'Gratuit', basic: 'Basique', premium: 'Premium' };
-    return plans[subscription?.plan] || 'Inconnu';
-  };
+  const subStatusLabel = (() => {
+    if (!subscription) return 'Aucun abonnement';
+    if (subscription.status === 'cancelled') return 'Annulé';
+    if (daysLeft <= 0) return 'Expiré';
+    if (daysLeft <= 7) return `Expire dans ${daysLeft} jour${daysLeft > 1 ? 's' : ''}`;
+    return 'Actif';
+  })();
 
-  const getPlanColor = () => {
-    const planColors = { free: colors.planFree, basic: colors.planBasic, premium: colors.planPremium };
-    return planColors[subscription?.plan] || colors.textSecondary;
-  };
+  const subStatusColor = (() => {
+    if (!subscription || subscription.status === 'cancelled') return colors.error;
+    if (daysLeft <= 0) return colors.error;
+    if (daysLeft <= 7) return colors.warning;
+    return colors.success;
+  })();
 
-  const getSubStatus = () => {
-    if (!subscription) return { label: 'Aucun', color: colors.error };
-    const daysLeft = getSubscriptionDaysLeft();
-    if (subscription.status === 'cancelled') return { label: 'Annulé', color: colors.error };
-    if (daysLeft <= 0) return { label: 'Expiré', color: colors.error };
-    if (daysLeft <= 7) return { label: `Expire dans ${daysLeft}j`, color: colors.warning };
-    return { label: 'Actif', color: colors.success };
-  };
-
-  const subStatus = getSubStatus();
   const endDate = subscription?.endDate?.toDate
     ? subscription.endDate.toDate()
     : subscription?.endDate ? new Date(subscription.endDate) : null;
 
-  const settingsSections = [
-    {
-      title: 'Compte',
-      items: [
-        {
-          icon: 'person-circle-outline',
-          label: 'Mon profil',
-          subtitle: userProfile?.name,
-          onPress: () => Alert.alert('Profil', 'Fonctionnalité disponible bientôt.'),
-          showArrow: true,
-        },
-        {
-          icon: 'storefront-outline',
-          label: 'Ma boutique',
-          subtitle: store?.name,
-          onPress: () => Alert.alert('Boutique', 'Fonctionnalité disponible bientôt.'),
-          showArrow: true,
-        },
-        {
-          icon: 'lock-closed-outline',
-          label: 'Changer le mot de passe',
-          onPress: () => Alert.alert('Mot de passe', 'Fonctionnalité disponible bientôt.'),
-          showArrow: true,
-        },
-      ],
-    },
-    {
-      title: 'Abonnement',
-      items: [
-        {
-          icon: 'diamond-outline',
-          label: 'Mon abonnement',
-          subtitle: `Plan ${getPlanName()} · ${subStatus.label}`,
-          subtitleColor: subStatus.color,
-          onPress: () => navigation.navigate('Subscription'),
-          showArrow: true,
-          highlight: true,
-        },
-      ],
-    },
-    {
-      title: 'Application',
-      items: [
-        {
-          icon: 'information-circle-outline',
-          label: 'À propos',
-          subtitle: 'Version 1.0.0',
-          onPress: () => Alert.alert('StockManager', 'Version 1.0.0\nDéveloppé avec ❤️'),
-          showArrow: false,
-        },
-        {
-          icon: 'help-circle-outline',
-          label: 'Aide & Support',
-          onPress: () => Alert.alert('Support', 'Contactez-nous: support@stockmanager.com'),
-          showArrow: true,
-        },
-        {
-          icon: 'document-text-outline',
-          label: 'Conditions d\'utilisation',
-          onPress: () => Alert.alert('CGU', 'Fonctionnalité disponible bientôt.'),
-          showArrow: true,
-        },
-      ],
-    },
-  ];
-
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>Paramètres</Text>
+      <Header
+        title="Paramètres"
+        onBack={() => navigation.goBack()}
+        showShadow
+      />
 
-        {/* Profile card */}
-        <Card style={styles.profileCard}>
-          <View style={styles.profileContent}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{getInitials(userProfile?.name)}</Text>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+
+        {/* ── Carte profil ── */}
+        <View style={styles.profileCard}>
+          {/* Avatar */}
+          <View style={styles.profileTop}>
+            <View style={[styles.avatar, { backgroundColor: `${colors.primary}18` }]}>
+              <Text style={[styles.avatarText, { color: colors.primary }]}>
+                {getInitials(userProfile?.name)}
+              </Text>
             </View>
-            <View style={styles.profileInfo}>
-              <Text style={styles.profileName}>{userProfile?.name}</Text>
-              <Text style={styles.profileEmail}>{user?.email}</Text>
-              <View style={styles.profileBadge}>
-                <View style={[styles.planDot, { backgroundColor: getPlanColor() }]} />
-                <Text style={[styles.planBadgeText, { color: getPlanColor() }]}>
-                  Plan {getPlanName()}
-                </Text>
+
+            <View style={styles.profileMeta}>
+              <Text style={styles.profileName} numberOfLines={1}>{userProfile?.name || 'Utilisateur'}</Text>
+
+              {user?.email ? (
+                <Text style={styles.profileEmail} numberOfLines={1}>{user.email}</Text>
+              ) : user?.phoneNumber ? (
+                <Text style={styles.profileEmail}>{user.phoneNumber}</Text>
+              ) : null}
+
+              <View style={styles.profileBadges}>
+                {/* Role */}
+                <View style={[styles.badge, { backgroundColor: `${role.color}15` }]}>
+                  <View style={[styles.badgeDot, { backgroundColor: role.color }]} />
+                  <Text style={[styles.badgeText, { color: role.color }]}>{role.label}</Text>
+                </View>
+                {/* Plan */}
+                <View style={[styles.badge, { backgroundColor: `${plan.color}15` }]}>
+                  <Ionicons name={plan.icon as any} size={10} color={plan.color} />
+                  <Text style={[styles.badgeText, { color: plan.color }]}>{plan.label}</Text>
+                </View>
               </View>
             </View>
           </View>
 
-          {/* Subscription info */}
-          {endDate && (
-            <View style={styles.subInfo}>
-              <Ionicons name="calendar-outline" size={14} color={subStatus.color} />
-              <Text style={[styles.subInfoText, { color: subStatus.color }]}>
-                {subStatus.label} · Expire le {moment(endDate).format('D MMM YYYY')}
-              </Text>
+          {/* Store */}
+          {store?.name && (
+            <View style={styles.storeRow}>
+              <Ionicons name="storefront-outline" size={14} color={colors.primary} />
+              <Text style={styles.storeRowText}>{store.name}</Text>
             </View>
           )}
-        </Card>
+        </View>
 
-        {/* Settings sections */}
-        {settingsSections.map((section) => (
-          <View key={section.title} style={styles.section}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-            <Card style={styles.sectionCard}>
-              {section.items.map((item, index) => (
-                <React.Fragment key={item.label}>
-                  <TouchableOpacity
-                    style={[
-                      styles.settingItem,
-                      item.highlight && styles.settingItemHighlight,
-                    ]}
-                    onPress={item.onPress}
-                  >
-                    <View style={[
-                      styles.settingIcon,
-                      { backgroundColor: item.highlight ? `${colors.primary}15` : colors.surfaceVariant },
-                    ]}>
-                      <Ionicons
-                        name={item.icon}
-                        size={20}
-                        color={item.highlight ? colors.primary : colors.textSecondary}
-                      />
-                    </View>
-                    <View style={styles.settingInfo}>
-                      <Text style={[
-                        styles.settingLabel,
-                        item.highlight && styles.settingLabelHighlight,
-                      ]}>
-                        {item.label}
-                      </Text>
-                      {item.subtitle && (
-                        <Text style={[
-                          styles.settingSubtitle,
-                          item.subtitleColor && { color: item.subtitleColor },
-                        ]}>
-                          {item.subtitle}
-                        </Text>
-                      )}
-                    </View>
-                    {item.showArrow && (
-                      <Ionicons name="chevron-forward" size={18} color={colors.textDisabled} />
-                    )}
-                  </TouchableOpacity>
-                  {index < section.items.length - 1 && (
-                    <View style={styles.divider} />
-                  )}
-                </React.Fragment>
-              ))}
-            </Card>
-          </View>
-        ))}
-
-        {/* Logout */}
+        {/* ── Abonnement hero ── */}
         <TouchableOpacity
-          style={styles.logoutButton}
+          style={[styles.subCard, { borderColor: `${plan.color}40` }]}
+          onPress={() => navigation.navigate('Subscription')}
+          activeOpacity={0.8}
+        >
+          <View style={styles.subCardLeft}>
+            <View style={[styles.subCardIcon, { backgroundColor: `${plan.color}15` }]}>
+              <Ionicons name={plan.icon as any} size={22} color={plan.color} />
+            </View>
+            <View>
+              <Text style={styles.subCardTitle}>Plan {plan.label}</Text>
+              <View style={styles.subCardStatusRow}>
+                <View style={[styles.subStatusDot, { backgroundColor: subStatusColor }]} />
+                <Text style={[styles.subCardStatus, { color: subStatusColor }]}>{subStatusLabel}</Text>
+              </View>
+              {endDate && daysLeft > 0 && (
+                <Text style={styles.subCardDate}>
+                  Jusqu'au {moment(endDate).format('D MMM YYYY')}
+                </Text>
+              )}
+            </View>
+          </View>
+          <View style={styles.subCardRight}>
+            <Text style={styles.subCardCta}>Gérer</Text>
+            <Ionicons name="chevron-forward" size={15} color={colors.primary} />
+          </View>
+        </TouchableOpacity>
+
+        {/* ── Usage rapide ── */}
+        <View style={styles.usageRow}>
+          <View style={styles.usageStat}>
+            <Text style={styles.usageValue}>{products.length}</Text>
+            <Text style={styles.usageLabel}>Produits</Text>
+          </View>
+          <View style={styles.usageDivider} />
+          <View style={styles.usageStat}>
+            <Text style={styles.usageValue}>{clients.length}</Text>
+            <Text style={styles.usageLabel}>Clients</Text>
+          </View>
+          <View style={styles.usageDivider} />
+          <View style={styles.usageStat}>
+            <Text style={[styles.usageValue, { color: subStatusColor }]}>{daysLeft > 0 ? daysLeft : 0}</Text>
+            <Text style={styles.usageLabel}>Jours restants</Text>
+          </View>
+        </View>
+
+        {/* ── Compte ── */}
+        <Section title="Compte">
+          <SettingRow
+            icon="person-outline"
+            iconColor={colors.primary}
+            label="Mon profil"
+            subtitle={userProfile?.name}
+            onPress={() => Alert.alert('Profil', 'Fonctionnalité disponible bientôt.')}
+          />
+          <Divider />
+          <SettingRow
+            icon="storefront-outline"
+            iconColor={colors.secondary}
+            label="Ma boutique"
+            subtitle={store?.name}
+            onPress={() => Alert.alert('Boutique', 'Fonctionnalité disponible bientôt.')}
+          />
+          <Divider />
+          <SettingRow
+            icon="lock-closed-outline"
+            iconColor={colors.warning}
+            label="Changer le mot de passe"
+            onPress={() => Alert.alert('Mot de passe', 'Fonctionnalité disponible bientôt.')}
+          />
+        </Section>
+
+        {/* ── Paiement ── */}
+        <Section title="Paiement">
+          <SettingRow
+            icon="card-outline"
+            iconColor={colors.success}
+            label="Modes de paiement"
+            subtitle="Configurer vos méthodes"
+            onPress={() => navigation.navigate('PaymentMethod')}
+          />
+        </Section>
+
+        {/* ── Application ── */}
+        <Section title="Application">
+          <SettingRow
+            icon="help-circle-outline"
+            iconColor={colors.primary}
+            label="Aide & Support"
+            subtitle="support@stockmanager.com"
+            onPress={() => Alert.alert('Support', 'Contactez-nous : support@stockmanager.com')}
+          />
+          <Divider />
+          <SettingRow
+            icon="document-text-outline"
+            iconColor={colors.textSecondary}
+            label="Conditions d'utilisation"
+            onPress={() => Alert.alert('CGU', 'Fonctionnalité disponible bientôt.')}
+          />
+          <Divider />
+          <SettingRow
+            icon="information-circle-outline"
+            iconColor={colors.accent}
+            label="À propos"
+            subtitle="Version 1.0.0"
+            onPress={() => Alert.alert('StockManager', 'Version 1.0.0')}
+            showArrow={false}
+          />
+        </Section>
+
+        {/* ── Déconnexion ── */}
+        <TouchableOpacity
+          style={styles.logoutBtn}
           onPress={handleLogout}
           disabled={loggingOut}
+          activeOpacity={0.8}
         >
-          <Ionicons name="log-out-outline" size={22} color={colors.error} />
+          <Ionicons name="log-out-outline" size={20} color={colors.error} />
           <Text style={styles.logoutText}>
-            {loggingOut ? 'Déconnexion...' : 'Se déconnecter'}
+            {loggingOut ? 'Déconnexion…' : 'Se déconnecter'}
           </Text>
         </TouchableOpacity>
 
-        <View style={styles.bottomPadding} />
+        <Text style={styles.versionFooter}>StockManager · v1.0.0</Text>
+        <View style={{ height: 24 }} />
       </ScrollView>
     </SafeAreaView>
   );
 };
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: colors.textPrimary,
-    marginBottom: 16,
-  },
+  safeArea: { flex: 1, backgroundColor: colors.background },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 12 },
+
+  // Profile card
   profileCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 24,
+    marginBottom: 12,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 3,
+    gap: 12,
   },
-  profileContent: {
+  profileTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    gap: 14,
   },
   avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: `${colors.primary}20`,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    flexShrink: 0,
   },
-  avatarText: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: colors.primary,
-  },
-  profileInfo: {
-    flex: 1,
-  },
-  profileName: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.textPrimary,
-  },
-  profileEmail: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  profileBadge: {
+  avatarText: { fontSize: 22, fontWeight: '800' },
+  profileMeta: { flex: 1, gap: 2 },
+  profileName: { fontSize: 17, fontWeight: '800', color: colors.textPrimary },
+  profileEmail: { fontSize: 12, color: colors.textSecondary },
+  profileBadges: { flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap' },
+  badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 6,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
   },
-  planDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  planBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  subInfo: {
+  badgeDot: { width: 6, height: 6, borderRadius: 3 },
+  badgeText: { fontSize: 11, fontWeight: '700' },
+
+  // Store row
+  storeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surfaceVariant,
+    gap: 7,
+    backgroundColor: `${colors.primary}08`,
     borderRadius: 8,
-    padding: 10,
-    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
   },
-  subInfoText: {
-    fontSize: 13,
-    fontWeight: '600',
+  storeRowText: { fontSize: 13, fontWeight: '600', color: colors.primary },
+
+  // Subscription hero card
+  subCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1.5,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  section: {
+  subCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  subCardIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subCardTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary, marginBottom: 3 },
+  subCardStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  subStatusDot: { width: 7, height: 7, borderRadius: 4 },
+  subCardStatus: { fontSize: 12, fontWeight: '600' },
+  subCardDate: { fontSize: 11, color: colors.textDisabled, marginTop: 2 },
+  subCardRight: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  subCardCta: { fontSize: 13, fontWeight: '700', color: colors.primary },
+
+  // Usage row
+  usageRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: 14,
     marginBottom: 20,
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
+  usageStat: { flex: 1, alignItems: 'center', gap: 3 },
+  usageValue: { fontSize: 20, fontWeight: '800', color: colors.textPrimary },
+  usageLabel: { fontSize: 11, color: colors.textSecondary, fontWeight: '500' },
+  usageDivider: { width: 1, backgroundColor: colors.divider, marginVertical: 4 },
+
+  // Section
+  section: { marginBottom: 20 },
   sectionTitle: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.textSecondary,
     textTransform: 'uppercase',
@@ -334,63 +440,58 @@ const styles = StyleSheet.create({
     paddingLeft: 4,
   },
   sectionCard: {
-    padding: 0,
+    backgroundColor: colors.surface,
+    borderRadius: 14,
     overflow: 'hidden',
+    shadowColor: colors.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  settingItem: {
+
+  // Setting row
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    gap: 12,
   },
-  settingItemHighlight: {
-    backgroundColor: `${colors.primary}05`,
-  },
-  settingIcon: {
-    width: 38,
-    height: 38,
+  rowIcon: {
+    width: 36,
+    height: 36,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    flexShrink: 0,
   },
-  settingInfo: {
-    flex: 1,
-  },
-  settingLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  settingLabelHighlight: {
-    color: colors.primary,
-  },
-  settingSubtitle: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.divider,
-    marginLeft: 70,
-  },
-  logoutButton: {
+  rowInfo: { flex: 1 },
+  rowLabel: { fontSize: 14, fontWeight: '600', color: colors.textPrimary },
+  rowSub: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
+  divider: { height: 1, backgroundColor: colors.divider, marginLeft: 62 },
+
+  // Logout
+  logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.errorBackground,
-    borderRadius: 14,
-    paddingVertical: 16,
     gap: 10,
-    marginBottom: 16,
+    backgroundColor: `${colors.error}10`,
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: `${colors.error}25`,
   },
-  logoutText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.error,
-  },
-  bottomPadding: {
-    height: 24,
+  logoutText: { fontSize: 15, fontWeight: '700', color: colors.error },
+
+  // Footer
+  versionFooter: {
+    textAlign: 'center',
+    fontSize: 11,
+    color: colors.textDisabled,
+    marginBottom: 4,
   },
 });
 

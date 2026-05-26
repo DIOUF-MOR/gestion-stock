@@ -19,7 +19,7 @@ const DEBT_DUE_DAYS_THRESHOLD = 3; // warn if debt due within 3 days
  * and schedules automatic alerts for low stock, debts, and subscription expiry.
  */
 const useNotifications = () => {
-  const { user, subscription, getSubscriptionDaysLeft, isAdmin } = useAuth();
+  const { user, subscription, getSubscriptionDaysLeft } = useAuth();
   const { products, debts } = useStore();
 
   const notificationListener = useRef(null);
@@ -67,8 +67,6 @@ const useNotifications = () => {
   // ── 2. Low stock alerts ───────────────────────────────────────────────────
   useEffect(() => {
     if (!products || products.length === 0) return;
-    if (isAdmin && isAdmin()) return; // admins don't need stock alerts
-
     products.forEach(product => {
       const key = product.id;
       if (alertedProducts.current.has(key)) return;
@@ -86,8 +84,6 @@ const useNotifications = () => {
   // ── 3. Debt due reminders ─────────────────────────────────────────────────
   useEffect(() => {
     if (!debts || debts.length === 0) return;
-    if (isAdmin && isAdmin()) return;
-
     const now = new Date();
     const threshold = new Date(now.getTime() + DEBT_DUE_DAYS_THRESHOLD * 24 * 60 * 60 * 1000);
 
@@ -112,8 +108,6 @@ const useNotifications = () => {
   // ── 4. Subscription expiry alerts ────────────────────────────────────────
   useEffect(() => {
     if (!subscription || subscriptionAlertSent.current) return;
-    if (isAdmin && isAdmin()) return;
-
     const daysLeft = getSubscriptionDaysLeft();
     const endDate = subscription.endDate?.toDate
       ? subscription.endDate.toDate()

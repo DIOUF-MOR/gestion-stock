@@ -11,6 +11,7 @@ import {
   where,
   serverTimestamp,
   increment,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '../../firebase.config';
 
@@ -141,6 +142,67 @@ export const getClientDebts = async (storeId, clientId) => {
     const snapshot = await getDocs(q);
     const debts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     return { success: true, debts };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Get all transactions for a specific client
+ * NOTE: This query requires a Firestore composite index on the 'transactions' collection:
+ *   clientId ASC, date DESC
+ * Create it in the Firebase console or deploy via firestore.indexes.json
+ */
+export const getClientTransactions = async (storeId, clientId) => {
+  try {
+    const transRef = collection(db, 'stores', storeId, 'transactions');
+    const q = query(transRef, where('clientId', '==', clientId), orderBy('date', 'desc'));
+    const snapshot = await getDocs(q);
+    const transactions = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    return { success: true, transactions };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Mark a client debt as fully paid (batch: update debt + decrement client totalDebt)
+ */
+export const markClientDebtPaid = async (storeId, debtId, clientId, amount) => {
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'stores', storeId, 'debts', debtId), {
+      isPaid: true, paidAt: serverTimestamp(), updatedAt: serverTimestamp(),
+    });
+    batch.update(doc(db, 'stores', storeId, 'clients', clientId), {
+      totalDebt: increment(-amount), updatedAt: serverTimestamp(),
+    });
+    await batch.commit();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Apply a partial payment to a debt
+ */
+export const applyPartialPayment = async (storeId, debtId, clientId, paymentAmount, originalAmount) => {
+  try {
+    const remaining = Math.max(0, originalAmount - paymentAmount);
+    const isPaidOff = remaining === 0;
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'stores', storeId, 'debts', debtId), {
+      amount: remaining,
+      isPaid: isPaidOff,
+      paidAt: isPaidOff ? serverTimestamp() : null,
+      updatedAt: serverTimestamp(),
+    });
+    batch.update(doc(db, 'stores', storeId, 'clients', clientId), {
+      totalDebt: increment(-paymentAmount), updatedAt: serverTimestamp(),
+    });
+    await batch.commit();
+    return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
   }

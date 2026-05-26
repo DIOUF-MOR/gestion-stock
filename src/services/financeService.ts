@@ -11,6 +11,8 @@ import {
   where,
   serverTimestamp,
   Timestamp,
+  writeBatch,
+  increment,
 } from 'firebase/firestore';
 import { db } from '../../firebase.config';
 
@@ -59,12 +61,59 @@ export const updateTransaction = async (storeId, transactionId, transactionData)
 };
 
 /**
- * Delete a transaction
+ * Delete a transaction.
+ * For sales (revenue + items): restores each product's stock atomically.
+ * For credit sales: also deletes the linked debt and decrements client.totalDebt.
  */
 export const deleteTransaction = async (storeId, transactionId) => {
   try {
     const transactionRef = doc(db, 'stores', storeId, 'transactions', transactionId);
-    await deleteDoc(transactionRef);
+    const snap = await getDoc(transactionRef);
+    if (!snap.exists()) return { success: false, error: 'Transaction introuvable' };
+    const tx = snap.data();
+
+    const isSale = tx.type === 'revenue' && Array.isArray(tx.items) && tx.items.length > 0;
+
+    if (isSale) {
+      const batch = writeBatch(db);
+
+      // Delete the transaction
+      batch.delete(transactionRef);
+
+      // Restore stock for each product sold
+      for (const item of tx.items) {
+        if (item.productId && item.quantity > 0) {
+          batch.update(doc(db, 'stores', storeId, 'products', item.productId), {
+            quantity: increment(item.quantity),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
+      // If credit sale: find and delete the linked debt + decrement client.totalDebt
+      if (tx.paymentMethod === 'Crédit' && tx.clientId) {
+        const debtsSnap = await getDocs(
+          query(
+            collection(db, 'stores', storeId, 'debts'),
+            where('transactionId', '==', transactionId),
+            where('isPaid', '==', false)
+          )
+        );
+        for (const debtDoc of debtsSnap.docs) {
+          batch.delete(debtDoc.ref);
+          batch.update(doc(db, 'stores', storeId, 'clients', tx.clientId), {
+            totalDebt: increment(-debtDoc.data().amount),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
+      await batch.commit();
+    } else {
+      // Simple transaction (manual revenue/expense) — just delete
+      await deleteDoc(transactionRef);
+    }
+
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
@@ -171,21 +220,49 @@ export const getMonthlyData = async (storeId, year = new Date().getFullYear()) =
 // =================== DEBTS ===================
 
 /**
- * Add a debt (receivable from client or payable to supplier)
+ * Add a debt (receivable from client or payable to supplier).
+ * If receivable and linked to a client, also increments client.totalDebt atomically.
  */
 export const addDebt = async (storeId, debtData) => {
   try {
+    const amount = Number(debtData.amount) || 0;
+    const isReceivableWithClient = debtData.type === 'receivable' && debtData.clientId;
+
+    if (isReceivableWithClient) {
+      const batch = writeBatch(db);
+      const debtRef = doc(collection(db, 'stores', storeId, 'debts'));
+      batch.set(debtRef, {
+        type: debtData.type,
+        amount,
+        description: debtData.description?.trim() || '',
+        clientId: debtData.clientId,
+        clientName: debtData.clientName?.trim() || '',
+        supplierName: '',
+        dueDate: debtData.dueDate ? Timestamp.fromDate(new Date(debtData.dueDate)) : null,
+        isPaid: false,
+        paidAt: null,
+        notes: debtData.notes?.trim() || '',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      batch.update(doc(db, 'stores', storeId, 'clients', debtData.clientId), {
+        totalDebt: increment(amount),
+        updatedAt: serverTimestamp(),
+      });
+      await batch.commit();
+      return { success: true, id: debtRef.id };
+    }
+
+    // Payable debt or receivable without client link — simple write
     const debtsRef = collection(db, 'stores', storeId, 'debts');
     const docRef = await addDoc(debtsRef, {
-      type: debtData.type, // 'receivable' | 'payable'
-      amount: Number(debtData.amount) || 0,
+      type: debtData.type,
+      amount,
       description: debtData.description?.trim() || '',
       clientId: debtData.clientId || null,
       clientName: debtData.clientName?.trim() || '',
       supplierName: debtData.supplierName?.trim() || '',
-      dueDate: debtData.dueDate
-        ? Timestamp.fromDate(new Date(debtData.dueDate))
-        : null,
+      dueDate: debtData.dueDate ? Timestamp.fromDate(new Date(debtData.dueDate)) : null,
       isPaid: false,
       paidAt: null,
       notes: debtData.notes?.trim() || '',
@@ -216,16 +293,27 @@ export const updateDebt = async (storeId, debtId, debtData) => {
 };
 
 /**
- * Mark a debt as paid
+ * Mark a debt as fully paid.
+ * If receivable with a linked client, decrements client.totalDebt atomically.
  */
 export const markDebtAsPaid = async (storeId, debtId) => {
   try {
     const debtRef = doc(db, 'stores', storeId, 'debts', debtId);
-    await updateDoc(debtRef, {
-      isPaid: true,
-      paidAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    const snap = await getDoc(debtRef);
+    if (!snap.exists()) return { success: false, error: 'Dette introuvable' };
+    const debt = snap.data();
+
+    if (debt.type === 'receivable' && debt.clientId && !debt.isPaid) {
+      const batch = writeBatch(db);
+      batch.update(debtRef, { isPaid: true, paidAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      batch.update(doc(db, 'stores', storeId, 'clients', debt.clientId), {
+        totalDebt: increment(-debt.amount),
+        updatedAt: serverTimestamp(),
+      });
+      await batch.commit();
+    } else {
+      await updateDoc(debtRef, { isPaid: true, paidAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    }
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
@@ -233,12 +321,63 @@ export const markDebtAsPaid = async (storeId, debtId) => {
 };
 
 /**
- * Delete a debt
+ * Apply a partial payment to a receivable debt.
+ * Reduces the debt amount and decrements client.totalDebt atomically.
+ */
+export const applyPartialPaymentToDebt = async (storeId, debtId, paymentAmount) => {
+  try {
+    const debtRef = doc(db, 'stores', storeId, 'debts', debtId);
+    const snap = await getDoc(debtRef);
+    if (!snap.exists()) return { success: false, error: 'Dette introuvable' };
+    const debt = snap.data();
+
+    if (debt.isPaid) return { success: false, error: 'Cette dette est déjà soldée' };
+    const payment = Math.min(paymentAmount, debt.amount);
+    const remaining = debt.amount - payment;
+    const isPaidOff = remaining <= 0;
+
+    const batch = writeBatch(db);
+    batch.update(debtRef, {
+      amount: remaining,
+      isPaid: isPaidOff,
+      paidAt: isPaidOff ? serverTimestamp() : null,
+      updatedAt: serverTimestamp(),
+    });
+    if (debt.type === 'receivable' && debt.clientId) {
+      batch.update(doc(db, 'stores', storeId, 'clients', debt.clientId), {
+        totalDebt: increment(-payment),
+        updatedAt: serverTimestamp(),
+      });
+    }
+    await batch.commit();
+    return { success: true, remaining };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Delete a debt.
+ * If it was an unpaid receivable linked to a client, decrements client.totalDebt.
  */
 export const deleteDebt = async (storeId, debtId) => {
   try {
     const debtRef = doc(db, 'stores', storeId, 'debts', debtId);
-    await deleteDoc(debtRef);
+    const snap = await getDoc(debtRef);
+    if (!snap.exists()) return { success: false, error: 'Dette introuvable' };
+    const debt = snap.data();
+
+    if (debt.type === 'receivable' && debt.clientId && !debt.isPaid) {
+      const batch = writeBatch(db);
+      batch.delete(debtRef);
+      batch.update(doc(db, 'stores', storeId, 'clients', debt.clientId), {
+        totalDebt: increment(-debt.amount),
+        updatedAt: serverTimestamp(),
+      });
+      await batch.commit();
+    } else {
+      await deleteDoc(debtRef);
+    }
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };

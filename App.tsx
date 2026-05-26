@@ -6,6 +6,8 @@ import { Provider as PaperProvider, DefaultTheme } from 'react-native-paper';
 import * as Notifications from 'expo-notifications';
 import { AuthProvider } from './src/context/AuthContext';
 import { StoreProvider } from './src/context/StoreContext';
+import { DeliveryProvider } from './src/context/DeliveryContext';
+import { OrderProvider } from './src/context/OrderContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import { colors } from './src/theme/colors';
 import useNotifications from './src/hooks/useNotifications';
@@ -47,7 +49,11 @@ export default function App() {
         <PaperProvider theme={paperTheme}>
           <AuthProvider>
             <StoreProvider>
-              <AppContent />
+              <DeliveryProvider>
+                <OrderProvider>
+                  <AppContent />
+                </OrderProvider>
+              </DeliveryProvider>
             </StoreProvider>
           </AuthProvider>
         </PaperProvider>

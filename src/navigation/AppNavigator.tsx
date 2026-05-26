@@ -7,9 +7,12 @@ import { useAuth } from '../context/AuthContext';
 import { logoutUser } from '../services/authService';
 import AuthNavigator from './AuthNavigator';
 import MainNavigator from './MainNavigator';
-import AdminNavigator from './AdminNavigator';
+import DeliveryNavigator from './DeliveryNavigator';
+import ClientNavigator from './ClientNavigator';
+import EmployeeNavigator from './EmployeeNavigator';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import SubscriptionScreen from '../screens/main/settings/SubscriptionScreen';
+import EmailVerificationScreen from '../screens/auth/EmailVerificationScreen';
 import { colors } from '../theme/colors';
 
 const Stack = createNativeStackNavigator();
@@ -46,7 +49,7 @@ const ExpiredSubscriptionScreen = ({ navigation }) => {
 };
 
 const AppNavigator = () => {
-  const { user, userProfile, loading, isAdmin, hasActiveSubscription } = useAuth();
+  const { user, userProfile, loading, isLivreur, isClient, isEmployee, hasActiveSubscription } = useAuth();
 
   if (loading) {
     return (
@@ -62,9 +65,18 @@ const AppNavigator = () => {
       {!user ? (
         // Not logged in
         <AuthNavigator />
-      ) : isAdmin() ? (
-        // Admin user
-        <AdminNavigator />
+      ) : isLivreur() ? (
+        // Delivery person — go directly to delivery portal
+        <DeliveryNavigator />
+      ) : isClient() ? (
+        // Client — go directly to client portal
+        <ClientNavigator />
+      ) : isEmployee() ? (
+        // Employee — role-based portal
+        <EmployeeNavigator />
+      ) : !user.emailVerified && !user.email?.endsWith('@stockmanager.app') ? (
+        // Email not yet verified (only for users with a real email)
+        <EmailVerificationScreen />
       ) : hasActiveSubscription() ? (
         // Vendor with active subscription
         <MainNavigator />

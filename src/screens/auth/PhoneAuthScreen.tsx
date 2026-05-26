@@ -6,22 +6,37 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+// Phone SMS auth requires a native build (expo-dev-client or production build).
+// It is not supported in Expo Go.
+import { doc, getDoc } from 'firebase/firestore';
 import { colors } from '../../theme/colors';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
+import { db } from '../../../firebase.config';
 
-// NOTE: expo-firebase-recaptcha requiert un development build (pas Expo Go)
-// Pour activer, lancer : npx expo run:android ou npx expo run:ios
-// import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
-// import { PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
-// import { auth, firebaseConfig } from '../../../firebase.config';
+const getPhoneErrorMessage = (code: string): string => {
+  switch (code) {
+    case 'auth/invalid-phone-number':
+      return 'Numéro de téléphone invalide';
+    case 'auth/too-many-requests':
+      return 'Trop de tentatives. Réessayez plus tard';
+    case 'auth/invalid-verification-code':
+      return 'Code incorrect. Vérifiez et réessayez';
+    case 'auth/code-expired':
+      return 'Code expiré. Demandez un nouveau code';
+    case 'auth/quota-exceeded':
+      return 'Quota SMS dépassé. Réessayez plus tard';
+    default:
+      return 'Une erreur est survenue. Réessayez';
+  }
+};
 
 const PhoneAuthScreen = ({ navigation }) => {
+  const confirmRef = useRef<any>(null);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otp, setOtp] = useState('');
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
@@ -36,32 +51,7 @@ const PhoneAuthScreen = ({ navigation }) => {
   };
 
   const sendOTP = async () => {
-    if (!phoneNumber.trim() || phoneNumber.replace(/\D/g, '').length < 8) {
-      setError('Veuillez entrer un numéro valide');
-      return;
-    }
-    setError('');
-
-    // ── En production (development build), décommenter ce bloc ──────────────
-    // setLoading(true);
-    // try {
-    //   const formattedPhone = formatPhone(phoneNumber.trim());
-    //   const provider = new PhoneAuthProvider(auth);
-    //   const id = await provider.verifyPhoneNumber(formattedPhone, recaptchaVerifier.current);
-    //   setVerificationId(id);
-    //   setStep('otp');
-    // } catch (err: any) {
-    //   setError(getPhoneErrorMessage(err.code));
-    // } finally {
-    //   setLoading(false);
-    // }
-    // ─────────────────────────────────────────────────────────────────────────
-
-    Alert.alert(
-      'Development Build requis',
-      "L'authentification par téléphone (SMS OTP) nécessite un build natif.\n\nLance dans le terminal :\nnpx expo run:android",
-      [{ text: 'OK' }]
-    );
+    setError('La connexion par SMS n\'est pas disponible dans Expo Go.\nUtilisez un build natif (expo-dev-client).');
   };
 
   const verifyOTP = async () => {
@@ -69,25 +59,27 @@ const PhoneAuthScreen = ({ navigation }) => {
       setError('Le code doit contenir 6 chiffres');
       return;
     }
+    if (!confirmRef.current) {
+      setError('Session expirée. Demandez un nouveau code');
+      return;
+    }
     setError('');
-
-    // ── En production (development build), décommenter ce bloc ──────────────
-    // setLoading(true);
-    // try {
-    //   const credential = PhoneAuthProvider.credential(verificationId, otp);
-    //   const result = await signInWithCredential(auth, credential);
-    //   // Vérifier si profil existe déjà
-    //   const userDoc = await getDoc(doc(db, 'users', result.user.uid));
-    //   if (!userDoc.exists()) {
-    //     navigation.navigate('CompleteProfile', { user: result.user });
-    //   }
-    //   // Sinon AuthContext détecte la connexion automatiquement
-    // } catch (err: any) {
-    //   setError(getPhoneErrorMessage(err.code));
-    // } finally {
-    //   setLoading(false);
-    // }
-    // ─────────────────────────────────────────────────────────────────────────
+    setLoading(true);
+    try {
+      const result = await confirmRef.current.confirm(otp);
+      const uid = result?.user?.uid;
+      if (uid) {
+        const userDoc = await getDoc(doc(db, 'users', uid));
+        if (!userDoc.exists()) {
+          navigation.navigate('CompleteProfile', { user: result.user });
+        }
+        // Sinon AuthContext détecte la connexion automatiquement
+      }
+    } catch (err: any) {
+      setError(getPhoneErrorMessage(err.code));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -149,7 +141,7 @@ const PhoneAuthScreen = ({ navigation }) => {
               </>
             ) : (
               <>
-                <TouchableOpacity style={styles.backBtn} onPress={() => { setStep('phone'); setOtp(''); setError(''); }}>
+                <TouchableOpacity style={styles.backBtn} onPress={() => { setStep('phone'); setOtp(''); setError(''); confirmRef.current = null; }}>
                   <Ionicons name="arrow-back" size={20} color={colors.textPrimary} />
                   <Text style={styles.backText}>Changer le numéro</Text>
                 </TouchableOpacity>
@@ -183,14 +175,6 @@ const PhoneAuthScreen = ({ navigation }) => {
               </>
             )}
 
-            {/* Lien admin */}
-            <TouchableOpacity
-              style={styles.adminLink}
-              onPress={() => navigation.navigate('AdminLogin')}
-            >
-              <Ionicons name="shield-outline" size={14} color={colors.textDisabled} />
-              <Text style={styles.adminLinkText}>Accès administrateur</Text>
-            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -252,12 +236,6 @@ const styles = StyleSheet.create({
   backText: { fontSize: 14, color: colors.textPrimary, fontWeight: '600' },
   resendBtn: { alignItems: 'center', marginTop: 16 },
   resendText: { fontSize: 14, color: colors.primary, fontWeight: '600' },
-  adminLink: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', gap: 6,
-    marginTop: 32, paddingVertical: 8,
-  },
-  adminLinkText: { fontSize: 12, color: colors.textDisabled },
 });
 
 export default PhoneAuthScreen;

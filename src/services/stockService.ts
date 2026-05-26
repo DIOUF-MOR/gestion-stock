@@ -19,6 +19,7 @@ import { db } from '../../firebase.config';
  */
 export const addProduct = async (storeId, productData) => {
   try {
+    if (!storeId) throw new Error('storeId manquant — profil boutique non chargé.');
     const productsRef = collection(db, 'stores', storeId, 'products');
     const docRef = await addDoc(productsRef, {
       ...productData,

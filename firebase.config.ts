@@ -17,9 +17,6 @@ export const firebaseConfig = {
   // measurementId ignoré — Analytics non disponible en React Native
 };
 
-// Admin email - the user with this email will have admin access
-export const ADMIN_EMAIL = "mor@admin.com";
-
 // Subscription plans configuration
 export const PLANS = {
   free: {
@@ -86,6 +83,9 @@ export const auth = initializeAuth(app, {
 });
 
 // Initialize Firestore
+// If you get "Database not found", make sure Firestore is created in the Firebase Console.
+// If your database uses a non-default region, replace 'getFirestore(app)' with:
+// getFirestore(app, '(default)') — or specify your region-based database ID.
 export const db = getFirestore(app);
 
 // Initialize Storage

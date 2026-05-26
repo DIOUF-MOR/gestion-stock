@@ -7,6 +7,9 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +17,7 @@ import { colors } from '../../../theme/colors';
 import { useStore } from '../../../context/StoreContext';
 import { useAuth } from '../../../context/AuthContext';
 import { deleteEmployee } from '../../../services/employeeService';
+import { resetEmployeePassword } from '../../../services/authService';
 import { canAddEmployee } from '../../../services/subscriptionService';
 import Card from '../../../components/common/Card';
 import EmptyState from '../../../components/common/EmptyState';
@@ -23,6 +27,32 @@ const EmployeesScreen = ({ navigation }) => {
   const { employees, loading, storeId } = useStore();
   const { subscription } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Reset password modal
+  const [resetTarget, setResetTarget] = useState<any>(null);
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+
+  const openResetModal = (employee: any) => {
+    setResetTarget(employee);
+    setNewPwd(''); setConfirmPwd(''); setShowPwd(false);
+  };
+
+  const handleResetPassword = async () => {
+    if (newPwd.length < 6) return Alert.alert('Erreur', 'Le mot de passe doit contenir au moins 6 caractères.');
+    if (newPwd !== confirmPwd) return Alert.alert('Erreur', 'Les mots de passe ne correspondent pas.');
+    setResetLoading(true);
+    const result = await resetEmployeePassword(resetTarget.userId, resetTarget.phone, newPwd);
+    setResetLoading(false);
+    if (result.success) {
+      setResetTarget(null);
+      Alert.alert('Succès', `Le mot de passe de ${resetTarget.name} a été réinitialisé.`);
+    } else {
+      Alert.alert('Erreur', result.error);
+    }
+  };
 
   const filteredEmployees = useMemo(() => {
     return employees.filter(e => {
@@ -114,7 +144,21 @@ const EmployeesScreen = ({ navigation }) => {
               <Text style={styles.inactiveBadgeText}>Inactif</Text>
             </View>
           )}
+          {item.userId && (
+            <View style={styles.appBadge}>
+              <Ionicons name="phone-portrait-outline" size={10} color={colors.primary} />
+              <Text style={styles.appBadgeText}>App</Text>
+            </View>
+          )}
           <View style={styles.actions}>
+            {item.userId && (
+              <TouchableOpacity
+                style={styles.keyButton}
+                onPress={() => openResetModal(item)}
+              >
+                <Ionicons name="key-outline" size={18} color={colors.warning} />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.editButton}
               onPress={() => navigation.navigate('AddEmployee', { employee: item })}
@@ -138,9 +182,14 @@ const EmployeesScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Employés</Text>
-          <Text style={styles.headerSubtitle}>{employees.length} employé(s)</Text>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <View>
+            <Text style={styles.headerTitle}>Employés</Text>
+            <Text style={styles.headerSubtitle}>{employees.length} employé(s)</Text>
+          </View>
         </View>
         <TouchableOpacity style={styles.addButton} onPress={handleAddEmployee}>
           <Ionicons name="person-add" size={22} color={colors.textInverse} />
@@ -194,6 +243,69 @@ const EmployeesScreen = ({ navigation }) => {
           />
         }
       />
+
+      {/* Reset password modal */}
+      <Modal visible={!!resetTarget} transparent animationType="slide" onRequestClose={() => setResetTarget(null)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setResetTarget(null)} />
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Réinitialiser le mot de passe</Text>
+                <Text style={styles.modalSub}>{resetTarget?.name} · {resetTarget?.phone}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setResetTarget(null)}>
+                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.pwdLabel}>Nouveau mot de passe</Text>
+            <View style={styles.pwdRow}>
+              <TextInput
+                style={styles.pwdInput}
+                value={newPwd}
+                onChangeText={setNewPwd}
+                placeholder="Minimum 6 caractères"
+                placeholderTextColor={colors.textDisabled}
+                secureTextEntry={!showPwd}
+              />
+              <TouchableOpacity onPress={() => setShowPwd(!showPwd)}>
+                <Ionicons name={showPwd ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.pwdLabel}>Confirmer</Text>
+            <View style={styles.pwdRow}>
+              <TextInput
+                style={styles.pwdInput}
+                value={confirmPwd}
+                onChangeText={setConfirmPwd}
+                placeholder="Répéter le mot de passe"
+                placeholderTextColor={colors.textDisabled}
+                secureTextEntry={!showPwd}
+              />
+              {confirmPwd.length > 0 && (
+                <Ionicons
+                  name={newPwd === confirmPwd ? 'checkmark-circle' : 'close-circle'}
+                  size={20}
+                  color={newPwd === confirmPwd ? colors.success : colors.error}
+                />
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.confirmBtn, resetLoading && { opacity: 0.6 }]}
+              onPress={handleResetPassword}
+              disabled={resetLoading}
+            >
+              <Ionicons name="key" size={18} color={colors.textInverse} />
+              <Text style={styles.confirmBtnText}>
+                {resetLoading ? 'Réinitialisation...' : 'Confirmer la réinitialisation'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -211,6 +323,8 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 12,
   },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  backBtn: { padding: 4, marginRight: 4 },
   headerTitle: {
     fontSize: 26,
     fontWeight: '800',
@@ -348,6 +462,94 @@ const styles = StyleSheet.create({
     backgroundColor: `${colors.error}15`,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  keyButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: `${colors.warning}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: `${colors.primary}12`,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  appBadgeText: {
+    fontSize: 10,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 36,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  modalSub: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 3,
+  },
+  pwdLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 8,
+  },
+  pwdRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceVariant,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 16,
+  },
+  pwdInput: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.textPrimary,
+    marginRight: 8,
+  },
+  confirmBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginTop: 4,
+  },
+  confirmBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textInverse,
   },
 });
 

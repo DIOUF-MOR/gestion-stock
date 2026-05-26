@@ -86,7 +86,10 @@ const AddClientScreen = ({ navigation, route }) => {
     <SafeAreaView style={styles.safeArea}>
       <Header
         title={isEditing ? 'Modifier le client' : 'Nouveau client'}
+        subtitle={isEditing ? 'Mettre à jour les informations' : 'Enregistrer un nouveau client'}
         onBack={() => navigation.goBack()}
+        accentColor={colors.secondary}
+        showShadow
       />
 
       <KeyboardAvoidingView

@@ -117,7 +117,7 @@ export const scheduleNotificationAt = async (title, body, date, data = {}, chann
         sound: true,
         ...(Platform.OS === 'android' && { channelId }),
       },
-      trigger: { date },
+      trigger: { type: 'date' as const, date },
     });
     return { success: true, id };
   } catch (error) {

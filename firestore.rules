@@ -2,14 +2,17 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
+    // ─── Helper functions ───────────────────────────────────────────────────
+
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    function isAdmin() {
-      return isAuthenticated() &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    // Safe user-doc getter — returns null if doc doesn't exist yet
+    function userDoc(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid))
+        ? get(/databases/$(database)/documents/users/$(uid)).data
+        : null;
     }
 
     function isOwner(userId) {
@@ -18,77 +21,162 @@ service cloud.firestore {
 
     function isStoreOwner(storeId) {
       return isAuthenticated() &&
+        exists(/databases/$(database)/documents/stores/$(storeId)) &&
         get(/databases/$(database)/documents/stores/$(storeId)).data.ownerId == request.auth.uid;
     }
 
-    function hasActiveSubscription() {
-      let sub = get(/databases/$(database)/documents/subscriptions/$(request.auth.uid)).data;
-      return sub.status == 'active' && sub.endDate > request.time;
+    function isStoreLivreur(storeId) {
+      let u = userDoc(request.auth.uid);
+      return isAuthenticated() && u != null &&
+        u.role == 'livreur' && u.storeId == storeId;
     }
 
-    // Users collection
+    function isStoreClient(storeId) {
+      let u = userDoc(request.auth.uid);
+      return isAuthenticated() && u != null &&
+        u.role == 'client' && u.storeId == storeId;
+    }
+
+    function isStoreEmployee(storeId) {
+      let u = userDoc(request.auth.uid);
+      return isAuthenticated() && u != null &&
+        u.role == 'employee' && u.storeId == storeId;
+    }
+
+    function getUserRole() {
+      let u = userDoc(request.auth.uid);
+      return u != null ? u.role : null;
+    }
+
+    // ─── Users collection ───────────────────────────────────────────────────
+
     match /users/{userId} {
-      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow get: if isAuthenticated() && (
+        isOwner(userId) ||
+        // Vendor/employee can fetch livreur/client/employee profiles from their store
+        (
+          (resource.data.role == 'livreur' || resource.data.role == 'client' || resource.data.role == 'employee') &&
+          resource.data.storeId == userDoc(request.auth.uid).storeId
+        )
+      );
+      allow list: if isAuthenticated() &&
+        resource.data.storeId == userDoc(request.auth.uid).storeId;
       allow create: if isAuthenticated() && isOwner(userId);
-      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
-      allow delete: if isAdmin();
+      allow update: if isAuthenticated() && (
+        isOwner(userId) ||
+        // Vendor can update livreur/employee profiles in their store
+        (
+          getUserRole() == 'vendor' &&
+          (resource.data.role == 'livreur' || resource.data.role == 'employee') &&
+          resource.data.storeId == userDoc(request.auth.uid).storeId
+        )
+      );
+      allow delete: if false;
     }
 
-    // Stores collection
+    // ─── Stores collection ──────────────────────────────────────────────────
+
     match /stores/{storeId} {
-      allow read: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin());
+      allow read: if isAuthenticated() && (
+        isStoreOwner(storeId) || isStoreLivreur(storeId) || isStoreClient(storeId) || isStoreEmployee(storeId)
+      );
       allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin());
-      allow delete: if isAdmin();
+      allow update: if isAuthenticated() && isStoreOwner(storeId);
+      allow delete: if false;
 
-      // Products subcollection
+      // Products
       match /products/{productId} {
-        allow read, write: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin());
+        allow read: if isAuthenticated() && (
+          isStoreOwner(storeId) || isStoreLivreur(storeId) || isStoreClient(storeId) || isStoreEmployee(storeId)
+        );
+        allow write: if isAuthenticated() && (isStoreOwner(storeId) || isStoreEmployee(storeId));
       }
 
-      // Clients subcollection
+      // Clients
       match /clients/{clientId} {
-        allow read, write: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin());
+        allow read: if isAuthenticated() && (
+          isStoreOwner(storeId) ||
+          isStoreEmployee(storeId) ||
+          (isStoreClient(storeId) && resource.data.userId == request.auth.uid)
+        );
+        allow write: if isAuthenticated() && (isStoreOwner(storeId) || isStoreEmployee(storeId));
       }
 
-      // Employees subcollection
+      // Employees subcollection — vendor only
       match /employees/{employeeId} {
-        allow read, write: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin());
+        allow read, write: if isAuthenticated() && isStoreOwner(storeId);
       }
 
-      // Transactions subcollection
+      // Transactions
       match /transactions/{transactionId} {
-        allow read, write: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin());
+        allow read, write: if isAuthenticated() && (isStoreOwner(storeId) || isStoreEmployee(storeId));
       }
 
-      // Debts subcollection
+      // Debts
       match /debts/{debtId} {
-        allow read, write: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin());
+        allow read, write: if isAuthenticated() && (isStoreOwner(storeId) || isStoreEmployee(storeId));
+      }
+
+      // Deliveries
+      match /deliveries/{deliveryId} {
+        allow read: if isAuthenticated() && (
+          isStoreOwner(storeId) || isStoreLivreur(storeId) || isStoreEmployee(storeId)
+        );
+        allow create: if isAuthenticated() && (isStoreOwner(storeId) || isStoreEmployee(storeId));
+        allow update: if isAuthenticated() && (
+          isStoreOwner(storeId) ||
+          isStoreEmployee(storeId) ||
+          (isStoreLivreur(storeId) && resource.data.assignedTo == request.auth.uid)
+        );
+        allow delete: if isAuthenticated() && isStoreOwner(storeId);
+      }
+
+      // Orders
+      match /orders/{orderId} {
+        allow read: if isAuthenticated() && (
+          isStoreOwner(storeId) ||
+          isStoreEmployee(storeId) ||
+          (isStoreClient(storeId) && resource.data.clientId == request.auth.uid)
+        );
+        allow create: if isAuthenticated() && (
+          isStoreOwner(storeId) || isStoreEmployee(storeId) || isStoreClient(storeId)
+        );
+        allow update: if isAuthenticated() && (
+          isStoreOwner(storeId) ||
+          isStoreEmployee(storeId) ||
+          (
+            isStoreClient(storeId) &&
+            resource.data.clientId == request.auth.uid &&
+            request.resource.data.status == 'cancelled'
+          )
+        );
+        allow delete: if isAuthenticated() && isStoreOwner(storeId);
       }
     }
 
-    // Subscriptions collection
+    // ─── Subscriptions collection ────────────────────────────────────────────
+
     match /subscriptions/{userId} {
-      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
-      allow create: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow create: if isAuthenticated() && isOwner(userId);
+      allow update: if false;
+      allow delete: if false;
     }
 
-    // Plans collection
+    // ─── Plans collection ────────────────────────────────────────────────────
+
     match /plans/{planId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow write: if false;
     }
 
-    // Payments collection
+    // ─── Payments collection ─────────────────────────────────────────────────
+
     match /payments/{paymentId} {
-      allow read: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid || isAdmin()
-      );
-      allow create: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated();
+      allow update: if false;
+      allow delete: if false;
     }
   }
 }

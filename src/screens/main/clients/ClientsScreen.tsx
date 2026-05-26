@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import moment from 'moment';
+import 'moment/locale/fr';
 import { colors } from '../../../theme/colors';
 import { useStore } from '../../../context/StoreContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -19,11 +21,35 @@ import Card from '../../../components/common/Card';
 import EmptyState from '../../../components/common/EmptyState';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
 
+moment.locale('fr');
+
 const ClientsScreen = ({ navigation }) => {
-  const { clients, loading, storeId } = useStore();
+  const { clients, debts, loading, storeId } = useStore();
   const { subscription } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterDebt, setFilterDebt] = useState(false);
+  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (clientId: string) => {
+    setExpandedClients(prev => {
+      const next = new Set(prev);
+      if (next.has(clientId)) next.delete(clientId);
+      else next.add(clientId);
+      return next;
+    });
+  };
+
+  // Map clientId -> unpaid receivable debts
+  const debtsByClient = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    (debts || []).forEach(d => {
+      if (d.type === 'receivable' && !d.isPaid && d.clientId) {
+        if (!map[d.clientId]) map[d.clientId] = [];
+        map[d.clientId].push(d);
+      }
+    });
+    return map;
+  }, [debts]);
 
   const filteredClients = useMemo(() => {
     return clients.filter(c => {
@@ -85,46 +111,109 @@ const ClientsScreen = ({ navigation }) => {
     return name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
   };
 
-  const renderClient = ({ item }) => (
-    <Card style={styles.clientCard} onPress={() => navigation.navigate('ClientDetail', { client: item })}>
-      <View style={styles.clientContent}>
-        {/* Avatar */}
-        <View style={[styles.avatar, { backgroundColor: `${colors.secondary}20` }]}>
-          <Text style={styles.avatarText}>{getInitials(item.name)}</Text>
+  const renderClient = ({ item }) => {
+    const clientDebts = debtsByClient[item.id] || [];
+    const isExpanded = expandedClients.has(item.id);
+    const hasDebts = clientDebts.length > 0;
+
+    return (
+      <Card style={styles.clientCard} onPress={() => navigation.navigate('ClientPortal', { client: item })}>
+        <View style={styles.clientContent}>
+          {/* Avatar */}
+          <View style={[styles.avatar, { backgroundColor: `${colors.secondary}20` }]}>
+            <Text style={styles.avatarText}>{getInitials(item.name)}</Text>
+          </View>
+
+          {/* Info */}
+          <View style={styles.clientInfo}>
+            <Text style={styles.clientName} numberOfLines={1}>{item.name}</Text>
+            {item.phone && (
+              <Text style={styles.clientPhone}>{item.phone}</Text>
+            )}
+            {item.totalDebt > 0 && (
+              <View style={styles.debtBadge}>
+                <Ionicons name="alert-circle" size={12} color={colors.error} />
+                <Text style={styles.debtText}>Doit: {formatCurrency(item.totalDebt)}</Text>
+                {clientDebts.length > 1 && (
+                  <Text style={styles.debtCount}>({clientDebts.length} dettes)</Text>
+                )}
+              </View>
+            )}
+          </View>
+
+          {/* Actions */}
+          <View style={styles.actions}>
+            {hasDebts && (
+              <TouchableOpacity
+                style={styles.expandButton}
+                onPress={() => toggleExpand(item.id)}
+              >
+                <Ionicons
+                  name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={colors.warning}
+                />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => navigation.navigate('AddClient', { client: item })}
+            >
+              <Ionicons name="create-outline" size={18} color={colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={() => handleDeleteClient(item)}
+            >
+              <Ionicons name="trash-outline" size={18} color={colors.error} />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Info */}
-        <View style={styles.clientInfo}>
-          <Text style={styles.clientName} numberOfLines={1}>{item.name}</Text>
-          {item.phone && (
-            <Text style={styles.clientPhone}>{item.phone}</Text>
-          )}
-          {item.totalDebt > 0 && (
-            <View style={styles.debtBadge}>
-              <Ionicons name="alert-circle" size={12} color={colors.error} />
-              <Text style={styles.debtText}>Doit: {formatCurrency(item.totalDebt)}</Text>
+        {/* Debt breakdown */}
+        {hasDebts && isExpanded && (
+          <View style={styles.debtBreakdown}>
+            <View style={styles.debtBreakdownHeader}>
+              <Ionicons name="time-outline" size={13} color={colors.textSecondary} />
+              <Text style={styles.debtBreakdownTitle}>Détail des dettes</Text>
             </View>
-          )}
-        </View>
-
-        {/* Actions */}
-        <View style={styles.actions}>
-          <TouchableOpacity
-            style={styles.editButton}
-            onPress={() => navigation.navigate('AddClient', { client: item })}
-          >
-            <Ionicons name="create-outline" size={18} color={colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.deleteButton}
-            onPress={() => handleDeleteClient(item)}
-          >
-            <Ionicons name="trash-outline" size={18} color={colors.error} />
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Card>
-  );
+            {clientDebts.map((debt, index) => {
+              const dueDate = debt.dueDate?.toDate
+                ? debt.dueDate.toDate()
+                : debt.dueDate ? new Date(debt.dueDate) : null;
+              const isOverdue = dueDate && dueDate < new Date();
+              return (
+                <View
+                  key={debt.id}
+                  style={[
+                    styles.debtRow,
+                    index < clientDebts.length - 1 && styles.debtRowBorder,
+                  ]}
+                >
+                  <View style={styles.debtRowLeft}>
+                    <View style={[styles.debtDot, { backgroundColor: isOverdue ? colors.error : colors.warning }]} />
+                    <View style={styles.debtRowInfo}>
+                      <Text style={styles.debtRowDesc} numberOfLines={1}>
+                        {debt.description || 'Crédit'}
+                      </Text>
+                      {dueDate && (
+                        <Text style={[styles.debtRowDue, isOverdue && styles.debtRowDueOverdue]}>
+                          {isOverdue ? 'En retard · ' : 'Échéance '}{moment(dueDate).format('D MMM YYYY')}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                  <Text style={[styles.debtRowAmount, isOverdue && { color: colors.error }]}>
+                    {formatCurrency(debt.amount)}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
+      </Card>
+    );
+  };
 
   if (loading) return <LoadingSpinner fullScreen />;
 
@@ -342,9 +431,85 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 3,
   },
+  debtCount: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginLeft: 3,
+  },
   actions: {
     flexDirection: 'row',
     gap: 6,
+  },
+  expandButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: `${colors.warning}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  debtBreakdown: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
+  debtBreakdownHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 8,
+  },
+  debtBreakdownTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  debtRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 7,
+  },
+  debtRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+  },
+  debtRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 8,
+    marginRight: 8,
+  },
+  debtDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  debtRowInfo: {
+    flex: 1,
+  },
+  debtRowDesc: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  debtRowDue: {
+    fontSize: 11,
+    color: colors.warning,
+    marginTop: 1,
+  },
+  debtRowDueOverdue: {
+    color: colors.error,
+    fontWeight: '600',
+  },
+  debtRowAmount: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.warning,
   },
   editButton: {
     width: 36,

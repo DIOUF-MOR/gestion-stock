@@ -91,7 +91,7 @@ const ReportCard = ({ icon, iconBg, title, description, onPress, loading }) => (
   </Card>
 );
 
-const ReportsScreen = () => {
+const ReportsScreen = ({ navigation }) => {
   const { userProfile } = useAuth();
   const { products, clients, employees, transactions, debts } = useStore();
   const [loadingType, setLoadingType] = useState(null);
@@ -156,7 +156,13 @@ const ReportsScreen = () => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <Header title="Rapports PDF" subtitle="Générer et partager des rapports" />
+      <Header
+        title="Rapports PDF"
+        subtitle="Générer et partager des rapports"
+        onBack={() => navigation.goBack()}
+        accentColor={colors.primary}
+        showShadow
+      />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Info banner */}

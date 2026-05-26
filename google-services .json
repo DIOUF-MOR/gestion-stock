@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "743205734546",
+    "firebase_url": "https://gestion-stock-e1fbd-default-rtdb.firebaseio.com",
+    "project_id": "gestion-stock-e1fbd",
+    "storage_bucket": "gestion-stock-e1fbd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:743205734546:android:1c98b75adeee2fa991fe4b",
+        "android_client_info": {
+          "package_name": "com.stockmanager.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDJu4KrHutGHh1ac-SgaZoVKDDRu1UuvHg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

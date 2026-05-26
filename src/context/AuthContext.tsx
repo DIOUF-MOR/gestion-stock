@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
-import { auth, db, ADMIN_EMAIL } from '../../firebase.config';
+import { auth, db } from '../../firebase.config';
 
 const AuthContext = createContext({});
 
@@ -28,32 +28,36 @@ export const AuthProvider = ({ children }) => {
       if (firebaseUser) {
         setUser(firebaseUser);
 
+        // Wait for BOTH profile and subscription before clearing the loading state.
+        // Using local flags (not state) so they live in the closure without extra renders.
+        let profileDone = false;
+        let subscriptionDone = false;
+        const trySetLoaded = () => {
+          if (profileDone && subscriptionDone) setLoading(false);
+        };
+
         // Listen to user profile changes
         const userRef = doc(db, 'users', firebaseUser.uid);
         unsubscribeProfile = onSnapshot(userRef, (docSnap) => {
-          if (docSnap.exists()) {
-            const profileData = { id: docSnap.id, ...docSnap.data() };
-            setUserProfile(profileData);
-          } else {
-            setUserProfile(null);
-          }
+          setUserProfile(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
+          profileDone = true;
+          trySetLoaded();
         }, (error) => {
           console.error('Error listening to user profile:', error);
+          profileDone = true;
+          trySetLoaded();
         });
 
         // Listen to subscription changes
         const subRef = doc(db, 'subscriptions', firebaseUser.uid);
         unsubscribeSubscription = onSnapshot(subRef, (docSnap) => {
-          if (docSnap.exists()) {
-            const subData = { id: docSnap.id, ...docSnap.data() };
-            setSubscription(subData);
-          } else {
-            setSubscription(null);
-          }
-          setLoading(false);
+          setSubscription(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
+          subscriptionDone = true;
+          trySetLoaded();
         }, (error) => {
           console.error('Error listening to subscription:', error);
-          setLoading(false);
+          subscriptionDone = true;
+          trySetLoaded();
         });
       } else {
         setUser(null);
@@ -70,16 +74,28 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  const isAdmin = () => {
-    return userProfile?.role === 'admin' || user?.email === ADMIN_EMAIL;
-  };
-
   const isVendor = () => {
     return userProfile?.role === 'vendor';
   };
 
+  const isLivreur = () => {
+    return userProfile?.role === 'livreur';
+  };
+
+  const isClient = () => {
+    return userProfile?.role === 'client';
+  };
+
+  const isEmployee = () => {
+    return userProfile?.role === 'employee';
+  };
+
+  const getEmployeeRole = () => {
+    return userProfile?.employeeRole || null;
+  };
+
   const hasActiveSubscription = () => {
-    if (isAdmin()) return true;
+    if (isLivreur() || isClient() || isEmployee()) return true;
     if (!subscription) return false;
 
     const now = new Date();
@@ -115,6 +131,13 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const reloadUser = async () => {
+    if (auth.currentUser) {
+      await auth.currentUser.reload();
+      setUser({ ...auth.currentUser });
+    }
+  };
+
   const value = {
     user,
     userProfile,
@@ -122,11 +145,15 @@ export const AuthProvider = ({ children }) => {
     loading,
     authError,
     setAuthError,
-    isAdmin,
     isVendor,
+    isLivreur,
+    isClient,
+    isEmployee,
+    getEmployeeRole,
     hasActiveSubscription,
     getSubscriptionDaysLeft,
     refreshUserProfile,
+    reloadUser,
   };
 
   return (

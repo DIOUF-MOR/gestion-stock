@@ -37,9 +37,10 @@ const RegisterScreen = ({ navigation }) => {
   const validate = () => {
     const newErrors = {};
     if (!form.name.trim()) newErrors.name = 'Le nom est requis';
-    if (!form.email.trim()) newErrors.email = 'L\'email est requis';
-    else if (!/\S+@\S+\.\S+/.test(form.email)) newErrors.email = 'Email invalide';
-    if (!form.phone.trim()) newErrors.phone = 'Le téléphone est requis';
+    if (!form.phone.trim() || form.phone.replace(/\D/g, '').length < 8)
+      newErrors.phone = 'Numéro de téléphone invalide';
+    if (form.email.trim() && !/\S+@\S+\.\S+/.test(form.email))
+      newErrors.email = 'Adresse email invalide';
     if (!form.password) newErrors.password = 'Le mot de passe est requis';
     else if (form.password.length < 6) newErrors.password = 'Minimum 6 caractères';
     if (form.password !== form.confirmPassword) {
@@ -102,7 +103,7 @@ const RegisterScreen = ({ navigation }) => {
               label="Nom complet *"
               value={form.name}
               onChangeText={(text) => updateField('name', text)}
-              placeholder="Jean Dupont"
+              placeholder="Moussa Diallo"
               autoCapitalize="words"
               error={errors.name}
               leftIcon={
@@ -111,26 +112,29 @@ const RegisterScreen = ({ navigation }) => {
             />
 
             <Input
-              label="Adresse email *"
-              value={form.email}
-              onChangeText={(text) => updateField('email', text)}
-              placeholder="jean@exemple.com"
-              keyboardType="email-address"
-              error={errors.email}
+              label="Numéro de téléphone *"
+              value={form.phone}
+              onChangeText={(text) => updateField('phone', text)}
+              placeholder="77 000 00 00"
+              keyboardType="phone-pad"
+              error={errors.phone}
               leftIcon={
-                <Ionicons name="mail-outline" size={20} color={colors.textSecondary} />
+                <View style={styles.prefixContainer}>
+                  <Text style={styles.prefix}>🇸🇳 +221</Text>
+                </View>
               }
             />
 
             <Input
-              label="Téléphone *"
-              value={form.phone}
-              onChangeText={(text) => updateField('phone', text)}
-              placeholder="+237 6XX XXX XXX"
-              keyboardType="phone-pad"
-              error={errors.phone}
+              label="Adresse email (optionnel)"
+              value={form.email}
+              onChangeText={(text) => updateField('email', text)}
+              placeholder="jean@exemple.com"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              error={errors.email}
               leftIcon={
-                <Ionicons name="call-outline" size={20} color={colors.textSecondary} />
+                <Ionicons name="mail-outline" size={20} color={colors.textSecondary} />
               }
             />
 
@@ -197,19 +201,6 @@ const RegisterScreen = ({ navigation }) => {
               onPress={handleRegister}
               loading={loading}
               style={styles.registerButton}
-            />
-
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>ou</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <Button
-              title="📱  S'inscrire par téléphone"
-              onPress={() => navigation.navigate('PhoneAuth', { mode: 'register' })}
-              variant="outline"
-              style={styles.phoneButton}
             />
 
             <View style={styles.loginRow}>
@@ -305,24 +296,8 @@ const styles = StyleSheet.create({
   registerButton: {
     marginBottom: 20,
   },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.divider,
-  },
-  dividerText: {
-    marginHorizontal: 16,
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  phoneButton: {
-    marginBottom: 20,
-  },
+  prefixContainer: { paddingRight: 8 },
+  prefix: { fontSize: 15, color: colors.textPrimary, fontWeight: '600' },
   loginRow: {
     flexDirection: 'row',
     justifyContent: 'center',
