@@ -8,6 +8,7 @@ import { logoutUser } from '../services/authService';
 import AuthNavigator from './AuthNavigator';
 import MainNavigator from './MainNavigator';
 import AdminNavigator from './AdminNavigator';
+import EmployeeNavigator from './EmployeeNavigator';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import SubscriptionScreen from '../screens/main/settings/SubscriptionScreen';
 import { colors } from '../theme/colors';
@@ -46,7 +47,7 @@ const ExpiredSubscriptionScreen = ({ navigation }) => {
 };
 
 const AppNavigator = () => {
-  const { user, userProfile, loading, isAdmin, hasActiveSubscription } = useAuth();
+  const { user, userProfile, loading, isAdmin, isEmployee, hasActiveSubscription } = useAuth() as any;
 
   if (loading) {
     return (
@@ -65,6 +66,9 @@ const AppNavigator = () => {
       ) : isAdmin() ? (
         // Admin user
         <AdminNavigator />
+      ) : isEmployee() ? (
+        // Employee portal
+        <EmployeeNavigator />
       ) : hasActiveSubscription() ? (
         // Vendor with active subscription
         <MainNavigator />

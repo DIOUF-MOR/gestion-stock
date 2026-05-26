@@ -78,8 +78,17 @@ export const AuthProvider = ({ children }) => {
     return userProfile?.role === 'vendor';
   };
 
+  const isEmployee = () => {
+    return userProfile?.role === 'employee';
+  };
+
+  const getEmployeeRole = () => {
+    return userProfile?.employeeRole || null;
+  };
+
   const hasActiveSubscription = () => {
     if (isAdmin()) return true;
+    if (isEmployee()) return true;
     if (!subscription) return false;
 
     const now = new Date();
@@ -124,6 +133,8 @@ export const AuthProvider = ({ children }) => {
     setAuthError,
     isAdmin,
     isVendor,
+    isEmployee,
+    getEmployeeRole,
     hasActiveSubscription,
     getSubscriptionDaysLeft,
     refreshUserProfile,

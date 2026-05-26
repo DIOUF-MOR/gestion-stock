@@ -26,6 +26,22 @@ service cloud.firestore {
       return sub.status == 'active' && sub.endDate > request.time;
     }
 
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function isStoreClient(storeId) {
+      let u = userDoc(request.auth.uid);
+      return isAuthenticated() && u != null &&
+        u.role == 'client' && u.storeId == storeId;
+    }
+
+    function isStoreEmployee(storeId) {
+      let u = userDoc(request.auth.uid);
+      return isAuthenticated() && u != null &&
+        u.role == 'employee' && u.storeId == storeId;
+    }
+
     // Users collection
     match /users/{userId} {
       allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
@@ -36,19 +52,21 @@ service cloud.firestore {
 
     // Stores collection
     match /stores/{storeId} {
-      allow read: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin());
+      allow read: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin() || isStoreEmployee(storeId));
       allow create: if isAuthenticated();
       allow update: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin());
       allow delete: if isAdmin();
 
       // Products subcollection
       match /products/{productId} {
-        allow read, write: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin());
+        allow read: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin() || isStoreEmployee(storeId));
+        allow write: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin() || isStoreEmployee(storeId));
       }
 
       // Clients subcollection
       match /clients/{clientId} {
-        allow read, write: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin());
+        allow read: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin() || isStoreEmployee(storeId));
+        allow write: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin() || isStoreEmployee(storeId));
       }
 
       // Employees subcollection
@@ -58,12 +76,14 @@ service cloud.firestore {
 
       // Transactions subcollection
       match /transactions/{transactionId} {
-        allow read, write: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin());
+        allow read: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin() || isStoreEmployee(storeId));
+        allow write: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin() || isStoreEmployee(storeId));
       }
 
       // Debts subcollection
       match /debts/{debtId} {
-        allow read, write: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin());
+        allow read: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin() || isStoreEmployee(storeId));
+        allow write: if isAuthenticated() && (isStoreOwner(storeId) || isAdmin() || isStoreEmployee(storeId));
       }
     }
 
