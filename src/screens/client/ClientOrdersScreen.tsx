@@ -20,6 +20,7 @@ import {
 } from '../../services/orderService';
 import EmptyState from '../../components/common/EmptyState';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
+import Header from '../../components/common/Header';
 
 moment.locale('fr');
 
@@ -93,10 +94,12 @@ const ClientOrdersScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Mes Commandes</Text>
-        <Text style={styles.headerSub}>{stats.total} commande(s) au total</Text>
-      </View>
+      <Header
+        title="Mes Commandes"
+        subtitle={`${stats.total} commande(s) au total`}
+        accentColor={colors.secondary}
+        showShadow
+      />
 
       {/* Quick stats */}
       <View style={styles.statsRow}>
@@ -156,9 +159,6 @@ const StatBox = ({ value, label, color }) => (
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
-  header: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12 },
-  headerTitle: { fontSize: 26, fontWeight: '800', color: colors.textPrimary },
-  headerSub: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
   statsRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginBottom: 12 },
   statBox: { flex: 1, borderRadius: 12, padding: 12, alignItems: 'center' },
   statValue: { fontSize: 20, fontWeight: '800' },

@@ -1,9 +1,168 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { Linking } from 'react-native';
 import moment from 'moment';
 import 'moment/locale/fr';
 
 moment.locale('fr');
+
+// ─── Invoice types & helpers ──────────────────────────────────────────────────
+
+export interface InvoiceItem {
+  name: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  subtotal: number;
+}
+
+export interface InvoiceData {
+  invoiceNumber: string;
+  date: Date;
+  storeName: string;
+  storePhone?: string;
+  clientName?: string;
+  clientPhone?: string;
+  items: InvoiceItem[];
+  subtotal: number;
+  discount: number;
+  total: number;
+  paymentMethod: string;
+  amountPaid?: number;
+  resteDu?: number;
+}
+
+export const buildInvoiceNumber = (): string => {
+  const d = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const r = Math.floor(Math.random() * 9000 + 1000);
+  return `FAC-${d}-${r}`;
+};
+
+// ─── 0. Facture client ────────────────────────────────────────────────────────
+
+export const generateInvoice = async (data: InvoiceData): Promise<{ success: boolean; uri?: string; error?: string }> => {
+  try {
+    const fc = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n || 0));
+    const fd = (d: Date) => moment(d).format('DD MMMM YYYY');
+
+    const rows = data.items.map(item => `
+      <tr>
+        <td>${item.name}</td>
+        <td style="text-align:center">${item.quantity} ${item.unit}</td>
+        <td style="text-align:right">${fc(item.unitPrice)} FCFA</td>
+        <td style="text-align:right;font-weight:700">${fc(item.subtotal)} FCFA</td>
+      </tr>
+    `).join('');
+
+    const discountRow = data.discount > 0
+      ? `<div class="sum-row" style="color:#E74C3C"><span>Remise</span><span>−${fc(data.discount)} FCFA</span></div>` : '';
+
+    const partialRows = (data.amountPaid != null && data.amountPaid < data.total) ? `
+      <div class="sum-row" style="color:#27AE60;font-weight:700"><span>Payé</span><span>${fc(data.amountPaid)} FCFA</span></div>
+      <div class="sum-row" style="color:#F39C12;font-weight:700"><span>Reste dû</span><span>${fc(data.resteDu ?? 0)} FCFA</span></div>
+    ` : '';
+
+    const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Arial,sans-serif;color:#212121;background:#fff;padding:32px;font-size:13px}
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:18px;border-bottom:3px solid #2E86AB;margin-bottom:24px}
+.store-name{font-size:20px;font-weight:900;color:#2E86AB}
+.store-sub{font-size:12px;color:#757575;margin-top:4px}
+.inv-title{font-size:28px;font-weight:900;color:#2E86AB;letter-spacing:3px;text-align:right}
+.inv-meta{font-size:12px;color:#757575;text-align:right;margin-top:3px}
+.client-box{background:#F5F7FA;border-radius:8px;padding:14px 16px;margin-bottom:20px}
+.client-lbl{font-size:10px;font-weight:700;color:#9E9E9E;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px}
+.client-name{font-size:15px;font-weight:700;color:#212121}
+.client-phone{font-size:12px;color:#757575;margin-top:3px}
+table{width:100%;border-collapse:collapse;margin-bottom:20px}
+thead{background:#2E86AB}
+thead th{color:#fff;padding:10px 12px;font-size:12px;font-weight:700;text-align:left}
+tbody tr:nth-child(even){background:#F8F9FA}
+tbody tr{border-bottom:1px solid #EEEEEE}
+tbody td{padding:9px 12px;font-size:13px}
+.pay-badge{display:inline-block;background:#E3F2FA;color:#2E86AB;border-radius:20px;padding:4px 14px;font-size:12px;font-weight:700;margin-bottom:18px}
+.summary{margin-left:auto;width:230px}
+.sum-row{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid #EEE}
+.sum-total{display:flex;justify-content:space-between;font-size:17px;font-weight:900;color:#2E86AB;border-top:2px solid #2E86AB;padding-top:10px;margin-top:4px}
+.footer{margin-top:32px;text-align:center;padding-top:16px;border-top:1px solid #EEE;color:#9E9E9E;font-size:12px}
+.footer strong{color:#2E86AB;font-size:14px;display:block;margin-bottom:4px}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <div>
+    <div class="store-name">${data.storeName}</div>
+    ${data.storePhone ? `<div class="store-sub">${data.storePhone}</div>` : ''}
+  </div>
+  <div>
+    <div class="inv-title">FACTURE</div>
+    <div class="inv-meta">N° ${data.invoiceNumber}</div>
+    <div class="inv-meta">${fd(data.date)}</div>
+  </div>
+</div>
+${data.clientName ? `
+<div class="client-box">
+  <div class="client-lbl">Facturé à</div>
+  <div class="client-name">${data.clientName}</div>
+  ${data.clientPhone ? `<div class="client-phone">${data.clientPhone}</div>` : ''}
+</div>` : ''}
+<table>
+<thead><tr>
+  <th>Désignation</th>
+  <th style="text-align:center">Qté</th>
+  <th style="text-align:right">Prix unitaire</th>
+  <th style="text-align:right">Montant</th>
+</tr></thead>
+<tbody>${rows}</tbody>
+</table>
+<span class="pay-badge">Paiement : ${data.paymentMethod}</span>
+<div class="summary">
+  <div class="sum-row"><span>Sous-total</span><span>${fc(data.subtotal)} FCFA</span></div>
+  ${discountRow}
+  <div class="sum-total"><span>TOTAL</span><span>${fc(data.total)} FCFA</span></div>
+  ${partialRows}
+</div>
+<div class="footer">
+  <strong>Merci pour votre confiance !</strong>
+  Généré par StockManager · ${data.storeName}
+</div>
+</body>
+</html>`;
+
+    const { uri } = await Print.printToFileAsync({ html });
+    await Sharing.shareAsync(uri, {
+      mimeType: 'application/pdf',
+      dialogTitle: 'Envoyer la facture',
+      UTI: 'com.adobe.pdf',
+    });
+    return { success: true, uri };
+  } catch (error: any) {
+    console.error('generateInvoice error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const sendInvoiceWhatsApp = async (
+  phone: string,
+  clientName: string,
+  total: number,
+  invoiceNumber: string
+): Promise<void> => {
+  const clean = phone.replace(/\D/g, '');
+  const intl = clean.startsWith('221') ? clean : `221${clean}`;
+  const fc = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n));
+  const text =
+    `Bonjour ${clientName} 👋,\n\nVoici votre facture *N°${invoiceNumber}* d'un montant de *${fc(total)} FCFA*.\n\nMerci pour votre confiance ! 🙏\n_${moment().format('DD/MM/YYYY')}_`;
+  const encoded = encodeURIComponent(text);
+  const waUrl = `whatsapp://send?phone=${intl}&text=${encoded}`;
+  const webUrl = `https://wa.me/${intl}?text=${encoded}`;
+  const canOpen = await Linking.canOpenURL(waUrl).catch(() => false);
+  await Linking.openURL(canOpen ? waUrl : webUrl);
+};
 
 // ─── Common helpers ───────────────────────────────────────────────────────────
 

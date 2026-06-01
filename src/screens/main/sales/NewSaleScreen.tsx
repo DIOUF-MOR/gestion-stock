@@ -21,6 +21,7 @@ import { useDelivery } from '../../../context/DeliveryContext';
 import { useAuth } from '../../../context/AuthContext';
 import { createSale, SaleItem } from '../../../services/salesService';
 import { createDelivery } from '../../../services/deliveryService';
+import { generateInvoice, sendInvoiceWhatsApp, buildInvoiceNumber, InvoiceData } from '../../../services/pdfService';
 import Button from '../../../components/common/Button';
 import Header from '../../../components/common/Header';
 import ClientPickerField from '../../../components/common/ClientPickerField';
@@ -39,7 +40,7 @@ const PAYMENT_METHODS = [
 const fmt = (n: number) => new Intl.NumberFormat('fr-FR').format(n) + ' FCFA';
 
 const NewSaleScreen = ({ navigation }) => {
-  const { products, clients, storeId } = useStore();
+  const { products, clients, storeId, store } = useStore() as any;
   const { livreurs } = useDelivery();
   const { isEmployee, getEmployeeRole } = useAuth();
   const isGerant = isEmployee() && getEmployeeRole() === 'gérant';
@@ -51,7 +52,14 @@ const NewSaleScreen = ({ navigation }) => {
   const [discount, setDiscount] = useState('');
   const [acompte, setAcompte] = useState('');
   const [loading, setLoading] = useState(false);
-  const [successData, setSuccessData] = useState<{ total: number; resteDu: number; deliveryMode: DeliveryMode; livreurName?: string } | null>(null);
+  const [successData, setSuccessData] = useState<{
+    total: number;
+    resteDu: number;
+    deliveryMode: DeliveryMode;
+    livreurName?: string;
+    invoice: InvoiceData;
+    invoiceSending: boolean;
+  } | null>(null);
   const scaleAnim = useMemo(() => new Animated.Value(0), []);
 
   // Delivery
@@ -88,7 +96,7 @@ const NewSaleScreen = ({ navigation }) => {
           setSuccessData(null);
           scaleAnim.setValue(0);
         }
-      }, 1800);
+      }, 5000);
       return () => clearTimeout(timer);
     }
   }, [successData]);
@@ -250,7 +258,28 @@ const NewSaleScreen = ({ navigation }) => {
         } as any);
       }
 
-      setSuccessData({ total, resteDu, deliveryMode, livreurName: selectedLivreur?.name });
+      const invoice: InvoiceData = {
+        invoiceNumber: buildInvoiceNumber(),
+        date: new Date(),
+        storeName: store?.name || 'Ma Boutique',
+        storePhone: store?.phone,
+        clientName: selectedClient?.name,
+        clientPhone: selectedClient?.phone,
+        items: cart.map(item => ({
+          name: item.productName,
+          quantity: item.quantity,
+          unit: item.unit,
+          unitPrice: item.unitPrice,
+          subtotal: item.unitPrice * item.quantity,
+        })),
+        subtotal,
+        discount: discountAmt,
+        total,
+        paymentMethod,
+        amountPaid: showAcompte && acompteAmt < total ? acompteAmt : undefined,
+        resteDu: resteDu > 0 ? resteDu : undefined,
+      };
+      setSuccessData({ total, resteDu, deliveryMode, livreurName: selectedLivreur?.name, invoice, invoiceSending: false });
     } finally {
       setLoading(false);
     }
@@ -627,7 +656,41 @@ const NewSaleScreen = ({ navigation }) => {
                 </Text>
               </View>
             )}
-            <Text style={styles.successHint}>Retour automatique…</Text>
+
+            {/* ── Invoice actions ── */}
+            <View style={styles.invoiceRow}>
+              <TouchableOpacity
+                style={styles.invoiceBtn}
+                disabled={successData.invoiceSending}
+                onPress={async () => {
+                  setSuccessData(d => d ? { ...d, invoiceSending: true } : d);
+                  await generateInvoice(successData.invoice).catch(console.error);
+                  setSuccessData(d => d ? { ...d, invoiceSending: false } : d);
+                }}
+              >
+                <Ionicons name="document-text-outline" size={18} color={colors.primary} />
+                <Text style={styles.invoiceBtnText}>PDF</Text>
+              </TouchableOpacity>
+
+              {successData.invoice.clientPhone ? (
+                <TouchableOpacity
+                  style={[styles.invoiceBtn, styles.invoiceBtnWA]}
+                  onPress={() => sendInvoiceWhatsApp(
+                    successData.invoice.clientPhone!,
+                    successData.invoice.clientName!,
+                    successData.invoice.total,
+                    successData.invoice.invoiceNumber,
+                  ).catch(console.error)}
+                >
+                  <Ionicons name="logo-whatsapp" size={18} color={colors.textInverse} />
+                  <Text style={[styles.invoiceBtnText, { color: colors.textInverse }]}>WhatsApp</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            <Text style={styles.successHint}>
+              {successData.invoice.invoiceNumber} · Retour automatique…
+            </Text>
           </Animated.View>
         </View>
       )}
@@ -900,9 +963,35 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   successHint: {
-    fontSize: 13,
+    fontSize: 11,
     color: colors.textDisabled,
-    marginTop: 4,
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  invoiceRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  invoiceBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: `${colors.primary}12`,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  invoiceBtnWA: {
+    backgroundColor: '#25D366',
+    borderColor: '#25D366',
+  },
+  invoiceBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
   },
 
   // Delivery section

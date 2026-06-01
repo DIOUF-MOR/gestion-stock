@@ -20,6 +20,7 @@ import { canAddClient } from '../../../services/subscriptionService';
 import Card from '../../../components/common/Card';
 import EmptyState from '../../../components/common/EmptyState';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
+import Header from '../../../components/common/Header';
 
 moment.locale('fr');
 
@@ -219,16 +220,18 @@ const ClientsScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Clients</Text>
-          <Text style={styles.headerSubtitle}>{clients.length} client(s)</Text>
-        </View>
-        <TouchableOpacity style={styles.addButton} onPress={handleAddClient}>
-          <Ionicons name="person-add" size={22} color={colors.textInverse} />
-        </TouchableOpacity>
-      </View>
+      <Header
+        title="Clients"
+        subtitle={`${clients.length} client(s)`}
+        accentColor={colors.secondary}
+        showShadow
+        rightActions={[{
+          icon: 'person-add',
+          onPress: handleAddClient,
+          color: colors.secondary,
+          variant: 'filled',
+        }]}
+      />
 
       {/* Total debt summary */}
       {totalDebt > 0 && (
@@ -293,37 +296,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-  },
-  headerTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: colors.textPrimary,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  addButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.secondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.secondary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
   },
   debtSummary: {
     flexDirection: 'row',

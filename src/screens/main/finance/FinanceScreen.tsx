@@ -14,6 +14,7 @@ import { colors } from '../../../theme/colors';
 import { useStore } from '../../../context/StoreContext';
 import Card from '../../../components/common/Card';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
+import Header from '../../../components/common/Header';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const MONTHS_FR = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
@@ -98,15 +99,18 @@ const FinanceScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Finance</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => navigation.navigate('AddTransaction', { type: 'revenue' })}
-        >
-          <Ionicons name="add" size={24} color={colors.textInverse} />
-        </TouchableOpacity>
-      </View>
+      <Header
+        title="Finance"
+        subtitle="Tableau de bord"
+        accentColor={colors.success}
+        showShadow
+        rightActions={[{
+          icon: 'add',
+          onPress: () => navigation.navigate('AddTransaction', { type: 'revenue' }),
+          color: colors.success,
+          variant: 'filled',
+        }]}
+      />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Period selector */}
@@ -267,32 +271,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-  },
-  headerTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: colors.textPrimary,
-  },
-  addButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.success,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.success,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
   },
   scrollContent: {
     paddingHorizontal: 16,

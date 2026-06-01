@@ -148,10 +148,10 @@ const TabIcon = ({
   color: string;
   badge?: number;
 }) => (
-  <View style={styles.tabIconContainer}>
+  <View style={[styles.tabIconWrap, focused && { backgroundColor: `${color}18` }]}>
     <Ionicons
       name={(focused ? name : `${name}-outline`) as any}
-      size={24}
+      size={22}
       color={color}
     />
     {badge != null && badge > 0 && (
@@ -176,8 +176,8 @@ const MainNavigator = () => {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textDisabled,
         tabBarStyle: [styles.tabBar, {
-          height: 65 + insets.bottom,
-          paddingBottom: 8 + insets.bottom,
+          height: 60 + insets.bottom,
+          paddingBottom: 6 + insets.bottom,
         }],
         tabBarLabelStyle: styles.tabLabel,
       }}
@@ -245,7 +245,7 @@ const MainNavigator = () => {
 
 const styles = StyleSheet.create({
   tabBar: {
-    paddingTop: 8,
+    paddingTop: 6,
     backgroundColor: colors.surface,
     borderTopWidth: 1,
     borderTopColor: colors.divider,
@@ -256,31 +256,36 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   tabLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
-    marginTop: 2,
+    marginTop: 1,
   },
-  tabIconContainer: {
-    position: 'relative',
+  tabIconWrap: {
+    width: 52,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
   badge: {
     position: 'absolute',
-    top: -4,
-    right: -8,
+    top: -2,
+    right: -2,
     backgroundColor: colors.error,
     borderRadius: 10,
-    minWidth: 18,
-    height: 18,
+    minWidth: 16,
+    height: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: colors.surface,
   },
   badgeText: {
     color: colors.textInverse,
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 9,
+    fontWeight: '800',
   },
 });
 

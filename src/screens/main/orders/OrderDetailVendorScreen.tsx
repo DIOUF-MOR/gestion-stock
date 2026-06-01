@@ -16,6 +16,8 @@ import 'moment/locale/fr';
 import { colors } from '../../../theme/colors';
 import { useOrder } from '../../../context/OrderContext';
 import { useStore } from '../../../context/StoreContext';
+import Header from '../../../components/common/Header';
+import { generateInvoice, sendInvoiceWhatsApp, buildInvoiceNumber } from '../../../services/pdfService';
 import {
   ORDER_STATUS_CONFIG,
   OrderStatus,
@@ -50,7 +52,7 @@ const NEXT_ACTIONS: Record<OrderStatus, { status: OrderStatus; label: string; ic
 const OrderDetailVendorScreen = ({ route, navigation }) => {
   const { order: initialOrder } = route.params;
   const { orders, storeId } = useOrder();
-  const { employees } = useStore();
+  const { employees, store } = useStore() as any;
   const [loading, setLoading] = useState(false);
   const [showLivreurModal, setShowLivreurModal] = useState(false);
 
@@ -126,19 +128,64 @@ const OrderDetailVendorScreen = ({ route, navigation }) => {
   const nextActions = NEXT_ACTIONS[order.status] || [];
   const isFinal = order.status === 'delivered' || order.status === 'cancelled';
 
-  // Livreurs: only employees with role livreur, or pick from employees list
-  // For now we show all employees as potential assignees
   const availableLivreurs = employees.filter((e: any) => e.role === 'livreur' || !e.role);
+
+  const handleSendInvoice = async (mode: 'pdf' | 'whatsapp') => {
+    const invoiceData = {
+      invoiceNumber: buildInvoiceNumber(),
+      date: order.createdAt?.toDate ? order.createdAt.toDate() : new Date(),
+      storeName: store?.name || 'Ma Boutique',
+      storePhone: store?.phone,
+      clientName: order.clientName,
+      clientPhone: order.clientPhone,
+      items: (order.items || []).map((item: any) => ({
+        name: item.name,
+        quantity: item.quantity,
+        unit: item.unit || 'unité',
+        unitPrice: item.unitPrice || (item.subtotal / item.quantity),
+        subtotal: item.subtotal,
+      })),
+      subtotal: order.totalAmount,
+      discount: 0,
+      total: order.totalAmount,
+      paymentMethod: order.paymentMethod || 'En ligne',
+    };
+
+    if (mode === 'pdf') {
+      await generateInvoice(invoiceData).catch(e =>
+        Alert.alert('Erreur', e.message)
+      );
+    } else if (mode === 'whatsapp' && order.clientPhone) {
+      await sendInvoiceWhatsApp(
+        order.clientPhone,
+        order.clientName,
+        order.totalAmount,
+        invoiceData.invoiceNumber,
+      ).catch(e => Alert.alert('Erreur', e.message));
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Détail commande</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      <Header
+        title="Détail commande"
+        subtitle={order.clientName}
+        onBack={() => navigation.goBack()}
+        accentColor={config?.color}
+        showShadow
+        rightActions={[
+          ...(order.clientPhone ? [{
+            icon: 'logo-whatsapp',
+            onPress: () => handleSendInvoice('whatsapp'),
+            color: '#25D366',
+          }] : []),
+          {
+            icon: 'document-text-outline',
+            onPress: () => handleSendInvoice('pdf'),
+            color: colors.primary,
+          },
+        ]}
+      />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         {/* Status hero */}
@@ -350,16 +397,6 @@ const TimeRow = ({ icon, label, value, color = colors.textSecondary }) => (
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16,
-    paddingTop: 12, paddingBottom: 12, backgroundColor: colors.surface,
-    borderBottomWidth: 1, borderBottomColor: colors.divider,
-  },
-  backBtn: {
-    width: 40, height: 40, borderRadius: 12, backgroundColor: colors.background,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: { flex: 1, fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
   content: { padding: 16 },
   statusHero: {
     borderRadius: 16, padding: 24, alignItems: 'center', marginBottom: 20,

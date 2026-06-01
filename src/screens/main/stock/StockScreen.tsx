@@ -18,6 +18,7 @@ import { canAddProduct } from '../../../services/subscriptionService';
 import Card from '../../../components/common/Card';
 import EmptyState from '../../../components/common/EmptyState';
 import LoadingSpinner from '../../../components/common/LoadingSpinner';
+import Header from '../../../components/common/Header';
 
 const StockScreen = ({ navigation }) => {
   const { products, loading, storeId } = useStore();
@@ -141,16 +142,18 @@ const StockScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Stock</Text>
-          <Text style={styles.headerSubtitle}>{products.length} produit(s)</Text>
-        </View>
-        <TouchableOpacity style={styles.addButton} onPress={handleAddProduct}>
-          <Ionicons name="add" size={24} color={colors.textInverse} />
-        </TouchableOpacity>
-      </View>
+      <Header
+        title="Stock"
+        subtitle={`${products.length} produit(s)`}
+        accentColor={colors.primary}
+        showShadow
+        rightActions={[{
+          icon: 'add',
+          onPress: handleAddProduct,
+          color: colors.primary,
+          variant: 'filled',
+        }]}
+      />
 
       {/* Search */}
       <View style={styles.searchContainer}>
@@ -229,37 +232,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-  },
-  headerTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: colors.textPrimary,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  addButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
   },
   searchContainer: {
     flexDirection: 'row',

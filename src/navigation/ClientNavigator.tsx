@@ -34,6 +34,33 @@ const ProfileStack = () => (
   </Stack.Navigator>
 );
 
+const TAB_ICONS: Record<string, string> = {
+  ClientHome: 'storefront',
+  MesCommandes: 'receipt',
+  ClientProfil: 'person',
+};
+
+const ClientTabIcon = ({
+  routeName,
+  focused,
+  color,
+}: {
+  routeName: string;
+  focused: boolean;
+  color: string;
+}) => {
+  const name = TAB_ICONS[routeName] || 'ellipse';
+  return (
+    <View style={[styles.tabIconWrap, focused && { backgroundColor: `${color}18` }]}>
+      <Ionicons
+        name={(focused ? name : `${name}-outline`) as any}
+        size={22}
+        color={color}
+      />
+    </View>
+  );
+};
+
 const ClientNavigator = () => {
   return (
     <Tab.Navigator
@@ -43,21 +70,9 @@ const ClientNavigator = () => {
         tabBarInactiveTintColor: colors.textDisabled,
         tabBarStyle: styles.tabBar,
         tabBarLabelStyle: styles.tabLabel,
-        tabBarIcon: ({ focused, color }) => {
-          const icons: Record<string, string> = {
-            ClientHome: 'storefront',
-            MesCommandes: 'receipt',
-            ClientProfil: 'person',
-          };
-          const name = icons[route.name] || 'ellipse';
-          return (
-            <Ionicons
-              name={(focused ? name : `${name}-outline`) as any}
-              size={24}
-              color={color}
-            />
-          );
-        },
+        tabBarIcon: ({ focused, color }) => (
+          <ClientTabIcon routeName={route.name} focused={focused} color={color} />
+        ),
       })}
     >
       <Tab.Screen
@@ -81,9 +96,9 @@ const ClientNavigator = () => {
 
 const styles = StyleSheet.create({
   tabBar: {
-    height: 65,
-    paddingBottom: 8,
-    paddingTop: 8,
+    height: 60,
+    paddingBottom: 6,
+    paddingTop: 6,
     backgroundColor: colors.surface,
     borderTopWidth: 1,
     borderTopColor: colors.divider,
@@ -93,7 +108,14 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
-  tabLabel: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  tabLabel: { fontSize: 10, fontWeight: '600', marginTop: 1 },
+  tabIconWrap: {
+    width: 52,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
 
 export default ClientNavigator;
